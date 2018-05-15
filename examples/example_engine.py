@@ -3,7 +3,14 @@ from alosi.engine import BaseAdaptiveEngine
 
 
 class PrototypeAdaptiveEngine(BaseAdaptiveEngine):
-    def __init__(self):
+    """
+    Example demonstrating the subclassing of BaseAdaptiveEngine to implement an adaptive engine
+    """
+    def __init__(self, W_p, W_r, W_d, W_c):
+        """
+        Accepts weights W_p, W_r, W_d, W_c as input
+        """
+        # placeholder data
         self.Scores = np.array([
             [1, 1, 0.5],
             [1, 2, 0.9],
@@ -31,10 +38,10 @@ class PrototypeAdaptiveEngine(BaseAdaptiveEngine):
         ])
         self.r_star = 0.0
         self.L_star = 2.2
-        self.W_p = 1.0
-        self.W_r = 2.0
-        self.W_d = 0.5
-        self.W_c = 1.0
+        self.W_p = W_p
+        self.W_r = W_r
+        self.W_d = W_d
+        self.W_c = W_c
 
     def get_guess(self, activity=None):
         if activity is not None:
@@ -115,14 +122,16 @@ class PrototypeAdaptiveEngine(BaseAdaptiveEngine):
         self.Transit = new_matrix
 
 
-# example usage
+# example usage of subclass instance
 
-engine = PrototypeAlosiAdaptiveEngine()
+# create a subclass instance
+engine = PrototypeAdaptiveEngine(5.0, 3.0, 1.0, 0.5)
 
+# use the recommend method
 engine.recommend(learner=1)
 
-engine.get_scores()
-
+# use the bayesian update method based on a score
 engine.update_from_score(learner=0, activity=0, score=0.5)
 
+# re-estimate the model parameters
 engine.train()
