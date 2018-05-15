@@ -1,33 +1,37 @@
-## alosi python library
+# alosi
 
-### Setup
+[![pypi](https://img.shields.io/pypi/v/alosi.svg)](https://pypi.org/project/alosi)
 
-Install from github:
-```
-pip install git+https://github.com/harvard-vpal/adaptive-engine#subdirectory=alosi
-```
+## About
 
-Or use a requirements file:
+**alosi** is a Python package providing utilities for building and interacting with, components of the 
+[ALOSI](http://www.alosilabs.org/) adaptive learning architecture. These include:
+* Recommendation engine core utilities
+* [Engine](https://github.com/harvard-vpal/adaptive-engine) API
+* [Bridge](https://github.com/harvard-vpal/bridge-adaptivity) API
 
-In `requirements.txt`:
-```
-git+https://github.com/harvard-vpal/adaptive-engine#subdirectory=alosi
-# ... other libraries ...
-```
-Then run `pip install -r requirements.txt`
+## Setup
 
-Or to install as an editable project (i.e. if you want to modify the underlying algorithm):
+Install using pip:
 ```
-git clone https://github.com/harvard-vpal/adaptive-engine
-pip install -e ./adaptive-engine/alosi
+pip install alosi
 ```
 
+Or to install as an editable project:
+```
+git clone https://github.com/harvard-vpal/alosi
+pip install -e ./alosi
+```
+
+## Getting started
+
+### Recommendation Engine module
  
-### Usage
+#### Implementing a recommendation engine
 
-#### Using [BaseAdaptiveEngine](https://github.com/harvard-vpal/adaptive-engine/blob/master/alosi_engine/alosi_engine/base_engine.py):
-
-You'll need to subclass BaseAdaptiveEngine and implement all the empty methods. For example:
+You'll need to subclass 
+[BaseAdaptiveEngine](https://github.com/harvard-vpal/adaptive-engine/blob/master/alosi_engine/alosi_engine/base_engine.py) 
+and implement all the empty methods. For example:
 
 ```
 import numpy as np
@@ -77,3 +81,8 @@ engine.train()
 ```
 See the full example in [`examples/example_engine.py`](https://github.com/harvard-vpal/adaptive-engine/blob/master/alosi_engine/examples/example_engine.py)
 
+### Engine API module
+Under construction
+
+### Bridge API module
+Under construction
