@@ -2,9 +2,9 @@ from setuptools import setup
 
 setup(
     name='alosi',
-    version='0.0.1',
+    version='0.0.2',
     description='Adaptive learning engine',
-    url='https://github.com/harvard-vpal/adaptive-engine',
+    url='https://github.com/harvard-vpal/alosi',
     author='Andrew Ang',
     author_email='andrew_ang@harvard.edu',
     license='Apache-2.0',
