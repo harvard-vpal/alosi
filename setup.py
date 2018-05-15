@@ -10,6 +10,7 @@ setup(
     license='Apache-2.0',
     packages=['alosi'],
     install_requires=[
-        'numpy',
-    ],
+        'requests==2.18.4',
+        'numpy==1.13.1'
+    ]
 )
