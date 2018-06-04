@@ -11,6 +11,10 @@ setup(
     packages=['alosi'],
     install_requires=[
         'requests==2.18.4',
-        'numpy==1.13.1'
+        'numpy==1.14.0',
+        'pandas==0.22.0',
+        'google-auth==1.5.0',
+        'google-auth-oauthlib==0.2.0',
+        'gspread==3.0.0'
     ]
 )
