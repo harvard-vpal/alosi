@@ -4,12 +4,13 @@ from google.auth.transport.requests import AuthorizedSession
 from pandas import read_csv
 from pandas.compat import StringIO
 import gspread
+import os
 
 # default scope allows full access to google drive
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
 
-def get_google_credentials_oauth2(client_secrets_file, port=5555, scopes=SCOPES):
+def get_oauth2_credentials(client_secrets_file, port=5555, scopes=SCOPES):
 
     """
     Get google credentials via oauth flow
@@ -20,19 +21,19 @@ def get_google_credentials_oauth2(client_secrets_file, port=5555, scopes=SCOPES)
 
     :param client_secrets_file: (str) location of client secrets file (e.g. '/path/to/file.json`)
     :param port: port to use for local webserver to listen on for auth response
-    :param scope: (list) auth scope, e.g. ['https://www.googleapis.com/auth/drive']
+    :param scopes: (list) auth scope, e.g. ['https://www.googleapis.com/auth/drive']
     :return: (google.oauth2.credentials.Credentials) google credentials object
     """
     flow = InstalledAppFlow.from_client_secrets_file(
         client_secrets_file,
         scopes=scopes)
-
     return flow.run_local_server(port=port)
 
 
-def get_google_credentials_service_account(credential_file=None, scopes=SCOPES):
+def get_service_account_credentials(credential_file=None, scopes=SCOPES):
     """
     Get credentials using a service account credential file
+    Supports retrieving credential file location from GOOGLE_APPLICATION_CREDENTIALS env variable
 
     :param credential_file: (str) location of service account credential file (e.g. '/path/to/file.json`)
     :param scopes: (list) auth scope, e.g. ['https://www.googleapis.com/auth/drive']
@@ -45,27 +46,35 @@ def get_google_credentials_service_account(credential_file=None, scopes=SCOPES):
     return service_account.Credentials.from_service_account_file(credential_file, scopes=scopes)
 
 
-def get_google_sheet_df(file_id=None, worksheet_title=None, credentials=None):
+def export_sheet_to_dataframe(file_id, credentials, worksheet_title=None):
     """
     Get google sheet as pandas dataframe, using authenticated request to
     https://docs.google.com/spreadsheets/d/{id}/export?format=csv&id={id}&gid={gid}
     Expects worksheet data to be reasonably table-like
 
     :param file_id: drive file id
-    :param worksheet_title: (str) title of spreadsheet, defaults to first spreadsheet if not specified
     :param credentials: google-auth credentials object
+    :param worksheet_title: (str) title of spreadsheet, defaults to getting first spreadsheet if not specified
     :return: (pd.DataFrame) worksheet data as pandas DataFrame
     """
-    worksheet_id = get_worksheet_id(file_id, worksheet_title, credentials)
+    worksheet_id = _get_worksheet_id(file_id, credentials, worksheet_title=worksheet_title)
     url = "https://docs.google.com/spreadsheets/d/{id}/export?format=csv&id={id}&gid={gid}".format(
-        id=file_id,gid=worksheet_id
+        id=file_id, gid=worksheet_id
     )
     response = AuthorizedSession(credentials).get(url)
     df = read_csv(StringIO(response.text))
     return df
 
 
-def get_worksheet_id(file_id, worksheet_title=None, credentials=None):
+def _get_worksheet_id(file_id, credentials=None, worksheet_title=None):
+    """
+    Retrieve Google Sheet worksheet id from worksheet title
+
+    :param file_id: drive file id
+    :param credentials: google-auth credentials object
+    :param worksheet_title: (str) title of spreadsheet, defaults to returning id of first spreadsheet if not specified
+    :return: spreadsheet id
+    """
     gc = gspread.Client(auth=credentials)
     gc.session = AuthorizedSession(credentials)
     sheet = gc.open_by_key(file_id)
