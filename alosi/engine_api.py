@@ -32,3 +32,15 @@ class EngineApi(object):
             self.base_url + '/score',
             json=dict(learner=learner, activity=activity, score=score)
         )
+
+    def bulk_update_mastery(self, data):
+        return self.client.put(
+            self.base_url + '/mastery/bulk_update',
+            json=data
+        )
+
+    def create_knowledge_component(self, **kwargs):
+        return self.client.post(
+            self.base_url + '/knowledge_component',
+            json=kwargs
+        )
