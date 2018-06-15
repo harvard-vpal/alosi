@@ -423,13 +423,12 @@ def recommendation_score_D(guess, slip, learner_mastery, difficulty):
     :param difficulty:
     :return: 1 x (# activities) vector of recommendation score values
     """
-    # number of learning objectives
     Q = len(difficulty)
     K = len(learner_mastery)
     L = learner_mastery
     relevance = calculate_relevance(guess, slip)
-    d_temp = np.tile(difficulty, (K, 1))  # repeated column vector
-    L_temp = np.tile(L, (Q, 1)).T  # repeated column vector
+    d_temp = np.tile(difficulty, (K, 1))  # repeated row vectors
+    L_temp = np.tile(L, (Q, 1)).T  # repeated column vectors
     D = -np.diag(np.dot(relevance, np.abs(L_temp - d_temp)))
     return D
 
