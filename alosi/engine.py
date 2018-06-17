@@ -445,24 +445,24 @@ def calculate_relevance(guess, slip):
 
 def odds(p, clean=True):
     if clean:
-        p = np.minimum(np.maximum(p,EPSILON),1-EPSILON)
+        p = np.minimum(np.maximum(p, EPSILON), 1-EPSILON)
     return p/(1.0-p)
 
 
-def replace_nan(A, B, inplace=True):
+def replace_nan(a, b, inplace=True):
     """
-    Replaces all NaN (or Inf) elements of A with the corresponding
-    elements of matrix B
-    :param A: (ndarray) matrix with NaN values that should be replaced
-    :param B: (ndarray) matrix whose values will be used to fill in NaN
-        spots in A
+    Replaces all NaN (or Inf) elements of a with the corresponding
+    elements of matrix b
+    :param a: (ndarray) matrix with NaN values that should be replaced
+    :param b: (ndarray) matrix whose values will be used to fill in NaN
+        spots in a
     :param inplace: whether to replace inplace or return a copy
     """
-    ind = np.where(np.isnan(A) | np.isinf(A))
+    ind = np.where(np.isnan(a) | np.isinf(a))
     if not inplace:
-        A = A.copy()
-    A[ind] = B[ind]
-    return A if not inplace else None
+        a = b.copy()
+    a[ind] = b[ind]
+    return a if not inplace else None
 
 
 def knowledge(scores, guess, slip):
