@@ -15,10 +15,9 @@ class BridgeApi(object):
     def get_client(self):
         return requests.Session()
 
-    def get_collection(self, **kwargs):
+    def get_collection(self, pk):
         return self.client.get(
-            self.base_url + '/collection',
-            json=kwargs
+            "{}/collection/{}".format(self.base_url, pk)
         )
 
     def create_collection(self, **kwargs):
@@ -40,10 +39,9 @@ class BridgeApi(object):
             json=kwargs
         )
 
-    def get_activity(self, **kwargs):
+    def get_activity(self, pk):
         return self.client.get(
-            self.base_url + '/activity/',
-            json=kwargs
+            "{}/activity/{}".format(self.base_url, pk)
         )
 
     def create_activity(self, **kwargs):
