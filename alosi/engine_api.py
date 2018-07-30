@@ -8,13 +8,15 @@ class EngineApi(object):
 
     def __init__(self, host="http://localhost:8000", token=None):
         self.host = host
-        self.base_url = self.host + '/engine/api'
-        self.headers = {'Authorization': 'Token {}'.format(token)} if token else {}
-        self.client = self.get_client()
-        self.client.headers.update(self.headers)
+        self.base_url = "{}/api/v2".format(self.host)
+        self.client = self.get_client(token)
 
-    def get_client(self):
-        return requests.Session()
+    @staticmethod
+    def get_client(token=None):
+        client = requests.Session()
+        headers = {'Authorization': 'Token {}'.format(token)} if token else {}
+        client.headers.update(headers)
+        return client
 
     def create_activity(self, **kwargs):
         return self.client.post(
@@ -23,9 +25,8 @@ class EngineApi(object):
         )
 
     def recommend(self, learner=None, collection=None, sequence=None):
-        base_url = self.host + '/api/v2'
         return self.client.post(
-            base_url + '/activity/recommend',
+            self.base_url + '/activity/recommend',
             json=dict(learner=learner, collection=collection, sequence=sequence)
         )
 

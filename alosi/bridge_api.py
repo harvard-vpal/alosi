@@ -7,13 +7,16 @@ class BridgeApi(object):
     """
 
     def __init__(self, host="http://localhost:8008", token=None):
-        self.base_url = host + '/api'
-        self.headers = {'Authorization': 'Token {}'.format(token)} if token else {}
-        self.client = self.get_client()
-        self.client.headers.update(self.headers)
+        self.host = host
+        self.base_url = "{}/api".format(self.host)
+        self.client = self.get_client(token)
 
-    def get_client(self):
-        return requests.Session()
+    @staticmethod
+    def get_client(token=None):
+        client = requests.Session()
+        headers = {'Authorization': 'Token {}'.format(token)} if token else {}
+        client.headers.update(headers)
+        return client
 
     def get_collection(self, pk):
         return self.client.get(
