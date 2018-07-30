@@ -1,4 +1,8 @@
+import logging
 import numpy as np
+
+
+log = logging.getLogger(__name__)
 
 # a regularization cutoff, the smallest value of a mastery probability
 EPSILON = 1e-10
@@ -366,12 +370,19 @@ def recommendation_score(guess, slip, learner_mastery, prereqs, r_star, L_star, 
     R = recommendation_score_R(guess, slip, learner_mastery, L_star)
     C = recommendation_score_C(guess, slip, last_attempted_guess, last_attempted_slip)
     D = recommendation_score_D(guess, slip, learner_mastery, difficulty)
-    return (
-        W_p * P
-        + W_r * R
-        + W_d * D
-        + W_c * C
-    )
+
+    subscores = np.array([P, R, C, D])
+
+    # log individual subscores for debugging
+    subscore_labels = ['P', 'R', 'C', 'D']
+    for subscore, label in zip(subscores, subscore_labels):
+        log.debug('Subscore {}: {}'.format(label, subscore))
+
+    # compute weighted average of subscores
+    weights = np.array([W_p, W_r, W_d, W_c])
+    scores = np.dot(weights, subscores)
+    log.debug("Combined activity scores: {}".format(scores))
+    return scores
 
 
 def recommendation_score_P(guess, slip, learner_mastery, prereqs, r_star, L_star):
