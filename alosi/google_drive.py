@@ -46,7 +46,7 @@ def get_service_account_credentials(credential_file=None, scopes=SCOPES):
     return service_account.Credentials.from_service_account_file(credential_file, scopes=scopes)
 
 
-def export_sheet_to_dataframe(file_id, credentials, worksheet_title=None):
+def export_sheet_to_dataframe(file_id, credentials, worksheet_title=None, encoding='utf-8'):
     """
     Get google sheet as pandas dataframe, using authenticated request to
     https://docs.google.com/spreadsheets/d/{id}/export?format=csv&id={id}&gid={gid}
@@ -55,6 +55,7 @@ def export_sheet_to_dataframe(file_id, credentials, worksheet_title=None):
     :param file_id: drive file id
     :param credentials: google-auth credentials object
     :param worksheet_title: (str) title of spreadsheet, defaults to getting first spreadsheet if not specified
+    :param encoding: character encoding system, e.g. 'utf-8'
     :return: (pd.DataFrame) worksheet data as pandas DataFrame
     """
     worksheet_id = _get_worksheet_id(file_id, credentials, worksheet_title=worksheet_title)
@@ -62,6 +63,7 @@ def export_sheet_to_dataframe(file_id, credentials, worksheet_title=None):
         id=file_id, gid=worksheet_id
     )
     response = AuthorizedSession(credentials).get(url)
+    response.encoding = encoding
     df = read_csv(StringIO(response.text))
     return df
 
