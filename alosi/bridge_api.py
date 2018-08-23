@@ -1,26 +1,19 @@
-import requests
+from alosi.api_client import ApiClient
 
 
-class BridgeApi(object):
+class BridgeApi(ApiClient):
     """
     General API interface to bridge application
     """
+    api_path = "/api"
+    trailing_slash = True
 
     def __init__(self, host="http://localhost:8008", token=None):
-        self.host = host
-        self.base_url = "{}/api".format(self.host)
-        self.client = self.get_client(token)
-
-    @staticmethod
-    def get_client(token=None):
-        client = requests.Session()
-        headers = {'Authorization': 'Token {}'.format(token)} if token else {}
-        client.headers.update(headers)
-        return client
+        super().__init__(host, token)
 
     def get_collection(self, pk):
         return self.client.get(
-            "{}/collection/{}".format(self.base_url, pk)
+            self._absolute_url("collection/{}".format(pk))
         )
 
     def create_collection(self, **kwargs):
@@ -32,13 +25,13 @@ class BridgeApi(object):
             owner
         """
         return self.client.post(
-            self.base_url + '/collection/',
+            self._absolute_url('collection'),
             json=kwargs
         )
 
     def delete_collection(self, **kwargs):
         return self.client.delete(
-            self.base_url + '/collection/',
+            self._absolute_url('collection'),
             json=kwargs
         )
 
@@ -49,12 +42,12 @@ class BridgeApi(object):
 
     def create_activity(self, **kwargs):
         return self.client.post(
-            self.base_url + '/activity/',
+            self._absolute_url('activity'),
             json=kwargs
         )
 
     def delete_activity(self, **kwargs):
         return self.client.delete(
-            self.base_url + '/activity/',
+            self._absolute_url('activity'),
             json=kwargs
         )
