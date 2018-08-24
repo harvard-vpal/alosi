@@ -19,14 +19,12 @@ class EngineApi(ApiClient):
     def recommend(self, learner=None, collection=None, sequence=None):
         return self.client.post(
             self._absolute_url('activity/recommend'),
-            self.base_url + '/activity/recommend',
             json=dict(learner=learner, collection=collection, sequence=sequence)
         )
 
     def submit_score(self, learner=None, activity=None, score=None):
         return self.client.post(
             self._absolute_url('score'),
-            self.base_url + '/score',
             json=dict(learner=learner, activity=activity, score=score)
         )
 
