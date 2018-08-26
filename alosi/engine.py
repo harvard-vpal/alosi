@@ -303,8 +303,8 @@ class BaseAdaptiveEngine:
 def x0_mult(guess, slip):
     """
     Compute x0_mult element-wise
-    :param guess: guess (np.array)
-    :param slip: slip (np.array)
+    :param guess: guess (np.array) [odds]
+    :param slip: slip (np.array) [odds]
     :return: np.array
     """
     return slip*(1.0+guess)/(1.0+slip)
@@ -313,8 +313,8 @@ def x0_mult(guess, slip):
 def x1_0_mult(guess, slip):
     """
     Compute x1_0 element-wise
-    :param guess: (np.array)
-    :param slip: (np.array)
+    :param guess: (np.array) [odds]
+    :param slip: (np.array) [odds]
     :return: np.array
     """
     return ((1.0+guess)/(guess*(1.0+slip)))/x0_mult(guess,slip)
@@ -324,7 +324,7 @@ def calculate_mastery_update(mastery, score, guess, slip, transit, epsilon):
     """
     Calculate bayesian update of learner mastery based on new score information
     :param mastery: 1xL np.array vector of current mastery parameters for learner
-    :param score: float, score value for activity
+    :param score: float, score value for activity between 0.0 and 1.0
     :param guess: 1xL np.array vector of guess parameters for activity
     :param slip: 1xL np.array vector of slip parameters for activity
     :param transit: 1xL np.array vector of transit parameters for activity
@@ -342,7 +342,7 @@ def calculate_mastery_update(mastery, score, guess, slip, transit, epsilon):
     return L
 
 
-def recommendation_score(guess, slip, learner_mastery, prereqs, r_star, L_star, difficulty, W_p, W_r, W_d, W_c,
+def recommendation_score(relevance, learner_mastery, prereqs, r_star, L_star, difficulty, W_p, W_r, W_d, W_c,
                          last_attempted_guess=None, last_attempted_slip=None):
     """
     Computes recommendation scores for activities
@@ -366,10 +366,10 @@ def recommendation_score(guess, slip, learner_mastery, prereqs, r_star, L_star, 
     :param last_attempted_slip: 1xK vector of slip parameters for activity
     :return: np.array of size (Q,) representing [1 x (# activities)] vector of activity recommendation score values
     """
-    P = recommendation_score_P(guess, slip, learner_mastery, prereqs, r_star, L_star)
-    R = recommendation_score_R(guess, slip, learner_mastery, L_star)
-    C = recommendation_score_C(guess, slip, last_attempted_guess, last_attempted_slip)
-    D = recommendation_score_D(guess, slip, learner_mastery, difficulty)
+    P = recommendation_score_P(relevance, learner_mastery, prereqs, r_star, L_star)
+    R = recommendation_score_R(relevance, learner_mastery, L_star)
+    C = recommendation_score_C(relevance, last_attempted_guess, last_attempted_slip)
+    D = recommendation_score_D(relevance, learner_mastery, difficulty)
 
     subscores = np.array([P, R, C, D])
 
@@ -385,7 +385,7 @@ def recommendation_score(guess, slip, learner_mastery, prereqs, r_star, L_star, 
     return scores
 
 
-def recommendation_score_P(guess, slip, learner_mastery, prereqs, r_star, L_star):
+def recommendation_score_P(relevance, learner_mastery, prereqs, r_star, L_star):
     """
     Compute scores according to Substrategy P
     :param slip: QxK np.array, slip parameter values for activities
@@ -398,38 +398,36 @@ def recommendation_score_P(guess, slip, learner_mastery, prereqs, r_star, L_star
     """
     m_w = prereqs
     L = learner_mastery
-    relevance = calculate_relevance(guess, slip)
+    # relevance = calculate_relevance(guess, slip)
 
     # replace missing values with 0.
     fillna(m_w)
-    fillna(relevance)
+    # fillna(relevance)
 
     m_r = np.dot(np.minimum(L - L_star, 0), m_w)
     P = np.dot(relevance, np.minimum((m_r + r_star), 0))
     return P
 
 
-def recommendation_score_R(guess, slip, learner_mastery, L_star):
+def recommendation_score_R(relevance, L, L_star):
     """
     Computes a recommendation score for each activity according to substrategy R
-    :param guess: (# activities) x (# LOs) np.array of guess parameter values for activities
-    :param slip: (# activities) x (# LOs) np.array of slip parameter values for activities
-    :param learner_mastery: 1xK vector of learner mastery values
-    :param L_star:
+    :param relevance: (# activities) x (# LOs) np.array of relevance values for activities
+    :param L: 1xK vector of learner mastery odds values
+    :param L_star: scalar parameter
     :return: np.array of size (Q,) representing [1 x (# activities)] vector of activity recommendation score values
     """
-    L = learner_mastery
-    relevance = calculate_relevance(guess, slip)
+    # L = odds(learner_mastery)
 
     # replace missing values with 0.0
-    fillna(L)
-    fillna(relevance)
+    # fillna(L)
+    # fillna(relevance)
 
     R = np.dot(relevance, np.maximum((L_star - L), 0))
     return R
 
 
-def recommendation_score_C(guess, slip, last_attempted_guess=None, last_attempted_slip=None):
+def recommendation_score_C(relevance, last_attempted_relevance=None):
     """
     Compute scores according to Substrategy C
     :param guess: (# activities) x (# LOs) np.array of guess parameter values for activities
@@ -441,22 +439,22 @@ def recommendation_score_C(guess, slip, last_attempted_guess=None, last_attempte
     # Q is number of activities
     Q = guess.shape[0]
 
-    if last_attempted_guess is None or last_attempted_slip is None:
+    if last_attempted_relevance is None:
         C = np.repeat(0.0, Q)
     else:
-        relevance = calculate_relevance(guess, slip)
-        fillna(relevance)  # replace np.nan with 0.
+        # relevance = calculate_relevance(guess, slip)
+        # fillna(relevance)  # replace np.nan with 0.
 
-        relevance_last_attempted = calculate_relevance(
-            last_attempted_guess,
-            last_attempted_slip
-        )
-        fillna(relevance_last_attempted)
+        # relevance_last_attempted = calculate_relevance(
+        #     last_attempted_guess,
+        #     last_attempted_slip
+        # )
+        # fillna(relevance_last_attempted)
         C = np.sqrt(np.dot(relevance, relevance_last_attempted))
     return C
 
 
-def recommendation_score_D(guess, slip, learner_mastery, difficulty):
+def recommendation_score_D(relevance, learner_mastery, difficulty):
     """
     Substrategy D
     learner_mastery: vector of mastery values for learner (1xK)
@@ -470,28 +468,38 @@ def recommendation_score_D(guess, slip, learner_mastery, difficulty):
     Q = len(difficulty)
     K = len(learner_mastery)
     L = learner_mastery
-    relevance = calculate_relevance(guess, slip)
-    fillna(relevance)
+    # relevance = calculate_relevance(guess, slip)
+    # fillna(relevance)
     d_temp = np.tile(difficulty, (K, 1))  # repeated row vectors
     L_temp = np.tile(L, (Q, 1)).T  # repeated column vectors
     D = -np.diag(np.dot(relevance, np.abs(L_temp - d_temp)))
     return D
 
 
-def calculate_relevance(guess, slip):
-    """
-    Compute relevance element-wise
-    Arguments:
-        guess (np.array)
-        slip (np.array)
-    """
-    return -np.log(guess)-np.log(slip)
-
-
 def odds(p, clean=True):
     if clean:
         p = np.minimum(np.maximum(p, EPSILON), 1-EPSILON)
     return p/(1.0-p)
+
+
+def calculate_relevance_from_odds(guess_odds, slip_odds):
+    """
+    Compute relevance element-wise
+    Arguments:
+        guess_odds (np.array)
+        slip_odds (np.array)
+    """
+    return -np.log(guess_odds)-np.log(slip_odds)
+
+
+def calculate_relevance(guess, slip):
+    """
+    Compute relevance element-wise
+    :param guess: (np.array) guess probability values
+    :param slip: (np.array) slip probability values
+    :return: (np.array) same size as inputs
+    """
+    return -np.log(odds(guess))-np.log(odds(slip))
 
 
 def knowledge(scores, guess, slip):
