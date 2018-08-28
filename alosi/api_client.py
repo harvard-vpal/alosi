@@ -37,6 +37,18 @@ class ApiClient:
             url += '/'
         return url
 
+    def prepare(self, method, path, **kwargs):
+        """
+        Construct a request but don't send
+        :param method:
+        :param path:
+        :param kwargs:
+        :return:
+        """
+        url = self._absolute_url(path)
+        request = requests.Request(method, url, **kwargs)
+        return self.client.prepare_request(request)
+
     def request(self, method, path, **kwargs):
         """
         Makes a generic request using client and base url
@@ -45,5 +57,5 @@ class ApiClient:
         :param kwargs: keyword arguments to pass to requests.request()
         :rtype: requests.Response
         """
-        url = self._absolute_url(path)
-        return self.client.request(method, url, **kwargs)
+        request = self.prepare(method, path, **kwargs)
+        return self.client.send(request)
