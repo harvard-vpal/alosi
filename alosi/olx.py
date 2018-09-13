@@ -2,6 +2,8 @@ import os
 import tarfile
 import shutil
 from lxml import etree
+from alosi.google_drive import export_sheet_to_dataframe
+import pandas as pd
 
 
 class Node:
@@ -128,7 +130,7 @@ class Course:
                     for component in vertical.components:
                         yield component
 
-    def build_export_from_template(self, template=None, output_filename=None):
+    def build_export_from_template(self, output_filename=None, template=None):
         """
         Creates assets in chapter, sequential, vertical, problem folders
         Creates folders if needed, overwrites items with same url_name
@@ -170,8 +172,8 @@ class Course:
                                                encoding="utf-8", pretty_print=True)
 
         # modify course/course.xml to include chapter references
-        parser = etree.XMLParser(
-            remove_blank_text=True)  # https://lxml.de/FAQ.html#why-doesn-t-the-pretty-print-option-reformat-my-xml-output
+        # https://lxml.de/FAQ.html#why-doesn-t-the-pretty-print-option-reformat-my-xml-output
+        parser = etree.XMLParser(remove_blank_text=True)
         course_etree = etree.parse("{}/course/course/course.xml".format(TEMP_DIR), parser)
         course_etree = self._add_chapters(course_etree)
         course_etree.write("{}/course/course/course.xml".format(TEMP_DIR), encoding="utf-8", pretty_print=True)
@@ -206,3 +208,126 @@ class Course:
         for i, chapter in enumerate(self.chapters):
             root.insert(i, etree.Element('chapter', url_name=chapter.url_name))
         return etree.ElementTree(root)
+
+
+class OlxCourseBuilder:
+    """
+    Build Course from google sheet
+    """
+    default_column_map = {c: c for c in [
+        'chapter', 'sequential', 'vertical', 'component', 'choice1', 'choice2', 'choice3', 'choice4', 'correct_choice',
+        'question_name'
+    ]}
+    default_choice_map = dict(a=0, b=1, c=2, d=3)
+    # default functions used for creating url name
+    url_name = {
+        'sequential': lambda chapter, sequential: "{}{}".format(chapter, sequential),
+        'vertical': lambda chapter, sequential, vertical: "{}{}{}".format(chapter, sequential, vertical)
+    }
+
+    def __init__(self, file_id, credentials, worksheet_title=None, template=None, column_map={}, choice_map={},
+                 sort_order=None, url_name=None):
+        """
+        #TODO validation checks to scan for blank values (e.g. body)
+        :param file_id: google sheet file id
+        :param credentials: google credential object
+        :param worksheet_title: title of google sheet worksheet to get items from
+        :param column_map: dict mapping standard column names to corresponding columns in sheet
+            valid keys: {chapter, sequential, vertical, component, choice1, choice2, choice3, choice4, correct}
+        :param sort_order: dict mapping from standard olx levels to list of values if non-alphabetical sort order desired
+            example: dict(colname1 = [val2, val1, val3], colname2 = [v1, v3, v2])
+            keys are colnames as they appear in sheet (not necessarily standardized version)
+        :param template: name of .tar.gz file to base new course off of
+        :param url_name: dict where values are functions that can be used to generate url_names for sequentials or
+            verticals based on chapter_lable, sequential_label, vertical_label
+            {
+                sequential: lambda chapter_label, sequential_label: ...
+                vertical: lambda chapter_label, sequential_label, vertical_label: ...
+            }
+
+        """
+        self.column_map = column_map
+        self.choice_map = choice_map
+        self.sort_order = sort_order
+        self.template = template
+        self.worksheet_title = worksheet_title
+        self.credentials = credentials
+        self.column_map = {**self.default_column_map, **column_map}
+        self.choice_map = {**self.default_choice_map, **choice_map}
+        self.url_name = {**self.url_name, **url_name}
+        self.sheet_df = self.prepare_sheet_df(file_id, credentials, worksheet_title=worksheet_title,
+                                              sort_order=sort_order)
+        self.course = self._build_course()
+
+    def prepare_sheet_df(self, file_id, credentials, worksheet_title=None, sort_order=None):
+        """
+        Download google sheet as dataframe, and standardize column names and values
+        :return: dataframe
+        """
+        df = export_sheet_to_dataframe(file_id, credentials, worksheet_title=worksheet_title)
+
+        # convert columns to categorical if custom sorting provided
+        for column_to_sort, sorted_values in sort_order.items():
+            df[column_to_sort] = pd.Categorical(df[column_to_sort], sorted_values)
+
+        # rename columns to standard names
+        df = df.rename(columns={v:k for k,v in self.column_map.items()})
+
+        # convert 'correct' option to numeric index
+        df['correct_choice'] = df.correct_choice.apply(lambda x: self.choice_map[x])
+
+        return df
+
+    def export_course(self, output_file):
+        """
+        Export course to .tar.gz file
+        :param output_file: name of .tar.gz file to create, e.g. "mycourse.tar.gz"
+        :return:
+        """
+        self.course.build_export_from_template(output_file, self.template)
+
+    def _build_course(self):
+        """
+        Create and populate course object with chapters, sequentials, verticals and components based on google sheet
+        :return: populated Course object
+        """
+        # parse spreadsheet of items and create chapter objects (with nested objects)
+
+        course = Course()
+
+        for chapter_label, chapter_group in self.sheet_df.groupby('chapter'):
+            # create a chapter object
+            chapter = Chapter(chapter_label, chapter_label)
+            for sequential_label, sequential_group in chapter_group.groupby('sequential'):
+                if sequential_group.empty: continue  # in case categorical values are used but group is empty
+                # create a sequential object
+                sequential = Sequential(
+                    sequential_label,
+                    url_name=self.url_name['sequential'](chapter_label, sequential_label)
+                )
+                for vertical_label, vertical_group in sequential_group.groupby('vertical'):
+                    if vertical_group.empty: continue  # in case categorical values are used but group is empty
+                    # create a vertical object
+                    vertical = Vertical(
+                        vertical_label,
+                        url_name=self.url_name['vertical'](chapter_label, sequential_label, vertical_label)
+                    )
+                    # create problems
+                    for row in vertical_group.itertuples():
+                        problem = Problem(
+                            display_name=row.question_name,
+                            url_name=getattr(row, 'component'),
+                            body=row.body,
+                            options=[row.choice1, row.choice2, row.choice3, row.choice4],
+                            correct_option=row.correct_choice,
+                            explanation=row.explanation
+                        )
+                        vertical.components.append(problem)
+                    # append vertical to sequential
+                    sequential.verticals.append(vertical)
+                # append sequential to chapter
+                chapter.sequentials.append(sequential)
+            # append chapter to course-level object
+            course.chapters.append(chapter)
+
+        return course
