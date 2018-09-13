@@ -7,6 +7,10 @@ import pandas as pd
 
 
 class Node:
+    """
+    Base class for olx nodes
+    Subclass this and specify the 'node_type' class attribute in the subclass
+    """
     def __init__(self, display_name, url_name=None):
         self.display_name = display_name
         self.url_name = url_name
@@ -23,6 +27,9 @@ class Node:
 
 
 class Chapter(Node):
+    """
+    OLX chapter node. A Chapter contains multiple Sequentials.
+    """
     node_type = 'chapter'
 
     def __init__(self, display_name, url_name=None):
@@ -34,6 +41,9 @@ class Chapter(Node):
 
 
 class Sequential(Node):
+    """
+    OLX sequential node. A Sequential contains multiple Verticals.
+    """
     node_type = 'sequential'
 
     def __init__(self, display_name, url_name=None):
@@ -45,6 +55,9 @@ class Sequential(Node):
 
 
 class Vertical(Node):
+    """
+    OLX vertical node. A Vertical contains multiple Components.
+    """
     node_type = 'vertical'
 
     def __init__(self, display_name, url_name=None):
@@ -57,7 +70,7 @@ class Vertical(Node):
 
 class Component(Node):
     """
-    Base class for component types, e.g. problem
+    Base class for OLX component node, e.g. problem
     """
 
     def __init__(self, display_name, url_name=None):
@@ -65,6 +78,9 @@ class Component(Node):
 
 
 class Problem(Component):
+    """
+    OLX problem node. A Problem is a type of Component.
+    """
     node_type = 'problem'
 
     def __init__(self, display_name, url_name=None, body=None, options=None, correct_option=None, explanation=None):
@@ -115,6 +131,9 @@ class Problem(Component):
 
 
 class Course:
+    """
+    OLX course. A course contains chapters
+    """
     def __init__(self, template=None):
         self.children = []
         self.template = template  # path to tar.gz of empty course export
