@@ -83,24 +83,36 @@ class Problem(Component):
     """
     node_type = 'problem'
 
-    def __init__(self, display_name, url_name=None, body=None, options=None, correct_option=None, explanation=None):
+    def __init__(self, display_name, url_name=None, body=None, options=None, correct_option=None, explanation=None,
+                 max_attempts=None):
+        """
+        :param display_name: component title
+        :param url_name: filename
+        :param body: problem/question content
+        :param options: list of option text content
+        :param correct_option: 0-index of the correct answer choice in 'options' list
+        :param explanation: explanation text
+        :param max_attempts: maximum number of attempts allowed for problem
+        """
         super().__init__(display_name, url_name)
         self.children = None
         self.body = body
         self.options = options
         self.correct_option = correct_option
         self.explanation = explanation
+        self.max_attempts = max_attempts
 
     def to_xml(self):
         """
         Override base to_xml() method
         {body, options, correct_option} are required
         display_name, explanation are optional
-        :param correct_option: 0-index of the correct answer choice in 'options' list
         :rtype: etree.ElementTree
         """
         # component properties
         root = etree.Element('problem', display_name=str(self.display_name), markdown='null')
+        if self.max_attempts is not None:
+            root.set('max_attempts', str(self.max_attempts))
         # question
         question = etree.SubElement(root, 'multiplechoiceresponse')
         # question body
@@ -235,7 +247,7 @@ class OlxCourseBuilder:
     """
     default_column_map = {c: c for c in [
         'chapter', 'sequential', 'vertical', 'component', 'choice1', 'choice2', 'choice3', 'choice4', 'correct_choice',
-        'question_name', 'explanation', 'body'
+        'question_name', 'explanation', 'body', 'max_attempts',
     ]}
     default_choice_map = dict(a=0, b=1, c=2, d=3)
     # default functions used for creating url name
@@ -245,7 +257,7 @@ class OlxCourseBuilder:
     }
 
     def __init__(self, file_id, credentials, worksheet_title=None, template=None, column_map={}, choice_map={},
-                 sort_order=None, url_name=None):
+                 sort_order=None, url_name=None, defaults={}):
         """
         #TODO validation checks to scan for blank values (e.g. body)
         :param file_id: google sheet file id
@@ -263,6 +275,10 @@ class OlxCourseBuilder:
                 sequential: lambda chapter_label, sequential_label: ...
                 vertical: lambda chapter_label, sequential_label, vertical_label: ...
             }
+        :param defaults: dict where keys are column names and keys are default value to use, e.g.
+            {
+                max_attempts: 1
+            }
 
         """
         self.column_map = column_map
@@ -275,10 +291,11 @@ class OlxCourseBuilder:
         self.choice_map = {**self.default_choice_map, **choice_map}
         self.url_name = {**self.url_name, **url_name}
         self.sheet_df = self.prepare_sheet_df(file_id, credentials, worksheet_title=worksheet_title,
-                                              sort_order=sort_order)
+                                              sort_order=sort_order, defaults=defaults)
+        self.defaults = defaults
         self.course = self._build_course()
 
-    def prepare_sheet_df(self, file_id, credentials, worksheet_title=None, sort_order=None):
+    def prepare_sheet_df(self, file_id, credentials, worksheet_title=None, sort_order={}, defaults={}):
         """
         Download google sheet as dataframe, and standardize column names and values
         :return: dataframe
@@ -288,6 +305,11 @@ class OlxCourseBuilder:
         # convert columns to categorical if custom sorting provided
         for column_to_sort, sorted_values in sort_order.items():
             df[column_to_sort] = pd.Categorical(df[column_to_sort], sorted_values)
+
+        # populate defaults
+        for column, default_value in defaults.items():
+            if column not in df.columns:
+                df[column] = default_value
 
         # rename columns to standard names
         df = df.rename(columns={v:k for k,v in self.column_map.items()})
@@ -338,7 +360,8 @@ class OlxCourseBuilder:
                             body=row.body,
                             options=[row.choice1, row.choice2, row.choice3, row.choice4],
                             correct_option=row.correct_choice,
-                            explanation=row.explanation
+                            explanation=row.explanation,
+                            max_attempts=row.max_attempts,
                         )
                         vertical.components.append(problem)
                     # append vertical to sequential
