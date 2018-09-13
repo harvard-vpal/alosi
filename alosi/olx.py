@@ -3,7 +3,7 @@ import tarfile
 import shutil
 from lxml import etree
 from alosi.google_drive import export_sheet_to_dataframe
-import pandas as pd
+from pandas import Categorical
 
 
 class Node:
@@ -304,7 +304,7 @@ class OlxCourseBuilder:
 
         # convert columns to categorical if custom sorting provided
         for column_to_sort, sorted_values in sort_order.items():
-            df[column_to_sort] = pd.Categorical(df[column_to_sort], sorted_values)
+            df[column_to_sort] = Categorical(df[column_to_sort], sorted_values)
 
         # populate defaults
         for column, default_value in defaults.items():
