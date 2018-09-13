@@ -216,7 +216,7 @@ class OlxCourseBuilder:
     """
     default_column_map = {c: c for c in [
         'chapter', 'sequential', 'vertical', 'component', 'choice1', 'choice2', 'choice3', 'choice4', 'correct_choice',
-        'question_name'
+        'question_name', 'explanation', 'body'
     ]}
     default_choice_map = dict(a=0, b=1, c=2, d=3)
     # default functions used for creating url name
@@ -282,7 +282,6 @@ class OlxCourseBuilder:
         """
         Export course to .tar.gz file
         :param output_file: name of .tar.gz file to create, e.g. "mycourse.tar.gz"
-        :return:
         """
         self.course.build_export_from_template(output_file, self.template)
 
