@@ -17,21 +17,14 @@ class GoogleSheetDataSource:
         'kc':'kc',
         'activity-kc':'activity-kc',
         'collection':'collection',
-        'prerequisite activity':'prerequisite activity',
+        'activity-activity':'activity-activity',
         'kc-kc':'kc-kc',
     }
-    # required column names in sheets
-    required_columns = {
-        'collection': ['collection_id','collection_name'],
-        'kc': ['kc_id','kc_name'],
-        'activity': ['activity_id','activity_name','difficulty','collection_id'],
-        'activity-kc': ['activity_id','kc_id'],
-        'prerequisite activities': ['dependent_activity_id','prerequisite_activity_id']
-    }
-    activity_id_formats = ['location_id',]
 
+    activity_id_formats = ['edx_location_id', 'edx_xblock_url', 'url']
 
-    def __init__(self, file_id, credentials, sheet_mapping=None, activity_id_format='location_id', prefix=None):
+    def __init__(self, file_id, credentials, sheet_mapping=None, column_mapping=None, prefix=None,
+                 activity_id_format=None, difficulty_mapping=None, connection_strength_mapping=None):
         """
         :param file_id: file id of google sheet from url
         :param credentials: google-auth credentials object
@@ -41,23 +34,65 @@ class GoogleSheetDataSource:
         """
         self.file_id = file_id
         self.credentials = credentials
-        self.sheets = sheet_mapping or self.default_sheet_mapping
-        self._validate_sheet_mapping(sheet_mapping)  # check sheet mapping validity
         self.activity_id_format = activity_id_format
+        self.settings = self._infer_settings(activity_id_format, column_mapping)
+        self.sheets = self._validate_sheet_mapping(sheet_mapping) or self.default_sheet_mapping
+        self.columns = self._validate_column_mapping(column_mapping) or self._get_required_columns()
         self.prefix = prefix
+        self.difficulty_mapping = difficulty_mapping
+        self.connection_strength_mapping = connection_strength_mapping
+
+    def _get_required_columns(self):
+        """
+        If activity id is a edx location id, additional info about the activity type is required to order
+        to construct the proper lti provider url
+        TODO could make kc/collection name optional and populate from id
+        :return: dict of required columns
+        """
+        required_columns = {
+            'collection': ['collection_id', 'collection_name'],
+            'kc': ['kc_id', 'kc_name'],
+            'activity': ['activity_id','activity_name', 'difficulty', 'collection_id', 'activity_type'],
+            'activity-kc': ['kc_id'],
+            'activity-activity': ['dependent_activity_id', 'prerequisite_activity_id'],
+            'kc-kc': ['dependent_kc_id', 'prerequisite_kc_id']
+        }
+        if self.settings['activity_id_format'] == 'edx_location_id':
+            required_columns['activity'].append('activity_type')
+        return required_columns
+
+    def _infer_settings(self, activity_id_format, column_mapping):
+        """
+        These settings indicate how data is organized/formatted in the spreadsheet
+        e.g. whether KC tagging is all in one line and comma separated, or if defined pairwise
+        e.g. whether activity id is a url or a location id
+        :return:
+        """
+        settings = {
+            'activity_id_format': activity_id_format,
+            'comma_sep_kc_tagging': 'kc_ids' in column_mapping['activity'],
+        }
+        return settings
 
     def _validate_sheet_mapping(self, sheet_mapping):
         """
         Check that all required sheet keys are in sheet mapping dict
         :param sheet_mapping: sheet_mapping argument from init
-        :return:
+        :return: returns sheet_mapping, after validating. No validation occurs if sheet_mapping is None.
         """
-        if not all([key in self.sheet_mapping_keys for key in sheet_mapping]):
-            raise ValueError("Unknown sheet key found: {}".format(self.sheet_mapping_keys))
+        if sheet_mapping is None:
+            return None
+
+        # ensure required sheets:
+        REQUIRED_SHEETS = ['activity','collection','kc']
+        for sheet in REQUIRED_SHEETS:
+            if sheet not in sheet_mapping:
+                raise ValueError('Mapping not found for sheet: {}'.format(sheet))
+
         return sheet_mapping
 
     @staticmethod
-    def _standardize_name(name):
+    def _clean_name(name):
         """
         Returns lowercase version of a string, with spaces replaced with underscores
         :param name: string to clean
@@ -65,29 +100,82 @@ class GoogleSheetDataSource:
         """
         return name.lower().replace(' ','_')
 
+    def _standardize_column_names(self, df, sheet_type):
+        """
+        Modify column names of given df using column mapping
+        :param df: dataframe
+        :param sheet_type: sheet type (corresponding to key in self.columns)
+        :return:
+        """
+        standardized_names = {v:k for k,v in self.columns[sheet_type].items()}  # invert mapping
+        df = df[list(standardized_names.keys())]
+        df.columns = [standardized_names[c] for c in df.columns]
+        return df
 
-    def get_data(self, sheet_label):
+    def get_data(self, sheet_type):
         """
         Retrieve spreadsheet data from a worksheet given the sheet label
-        :param sheet_label: data type to retrieve (activity, kc, item-kc, collection)
+        Also renames column names to standard convention and applies prefixes to relevant columns if applicable
+        :param sheet_type: data type to retrieve (activity, kc, item-kc, collection)
         :return: dataframe of google sheet data
         """
         df = export_sheet_to_dataframe(
             self.file_id,
-            worksheet_title=self.sheets[sheet_label],
+            worksheet_title=self.sheets[sheet_type],
             credentials=self.credentials
         )
-        df.columns = [self._standardize_name(c) for c in df.columns]
+        df = self._standardize_column_names(df, sheet_type)
         df = self._add_prefix(df)
+        # Bridge collection slug disallows some characters including "." and "+", so replace these with "-"
+        if 'collection_id' in df.columns:
+            df['collection_id'] = df.collection_id.str.replace('[.+]','-')
         return df
 
-    def _validate_columns(self, df, sheet_type):
+    @staticmethod
+    def _clean_slug_value(value):
         """
-        Check if required column ids are in sheets, based on column requirements in self.required_columns
+        Bridge collection slug disallows some characters including "." and "+", so replace these with "-"
+        :param self:
         :return:
         """
-        if not all([c in self.columns[sheet_type] for c in df]):
-            raise ValueError('Not all required columns found: sheet={}'.format(sheet_type))
+        return value.replace('.','-').replace('+','-')
+
+    def _validate_df_columns(self, df, sheet_type):
+        """
+        Check if required column ids are in the df (type specified by sheet_type)
+        and raise ValueError exception if there is a missing column detected
+        :return: None
+        """
+        self._validate_columns(df.columns, sheet_type)
+
+
+    def _validate_column_mapping(self, column_mapping):
+        """
+        Check if column mapping is valid
+        :return: None
+        """
+        for sheet in column_mapping:
+            self._validate_columns(column_mapping[sheet], sheet)
+        return column_mapping
+
+    def _validate_columns(self, columns, sheet_type):
+        """
+        Check if required column ids are present in given list of columns
+        :param columns:
+        :param sheet_type:
+        :return:
+        """
+        required_columns = self._get_required_columns()
+
+        # handle case where multi-kc tagging is specified in activity sheet
+        if not 'activity-kc' in self.sheets:
+            required_columns['activity'].append('kc_ids')
+
+        for required_column in required_columns[sheet_type]:
+            if required_column not in columns:
+                raise ValueError('Sheet {}: missing required column "{}"'.format(sheet_type, required_column))
+
+        return columns
 
     def _add_prefix(self, df):
         """
@@ -97,19 +185,24 @@ class GoogleSheetDataSource:
         """
         if not self.prefix:
             return df
-        if 'kc' in self.prefix and 'kc_id' in df.columns:
+
+        if 'kc' in self.prefix:
             kc_prefix = self.prefix['kc']
-            df['kc_id'] = df['kc_id'].apply(lambda x: kc_prefix + x)
-        # TODO refactor for less code repetition
-        if 'kc' in self.prefix and 'dependent_kc_id' in df.columns:
-            kc_prefix = self.prefix['kc']
-            df['dependent_kc_id'] = df['dependent_kc_id'].apply(lambda x: kc_prefix + x)
-        if 'kc' in self.prefix and 'prerequisite_kc_id' in df.columns:
-            kc_prefix = self.prefix['kc']
-            df['prerequisite_kc_id'] = df['prerequisite_kc_id'].apply(lambda x: kc_prefix + x)
-        if 'collection' in self.prefix and 'collection_id'in df.columns:
+            if 'kc_id' in df.columns:
+                df['kc_id'] = df['kc_id'].apply(lambda x: kc_prefix + x)
+            if 'dependent_kc_id' in df.columns:
+                df['dependent_kc_id'] = df['dependent_kc_id'].apply(lambda x: kc_prefix + x)
+            if 'prerequisite_kc_id' in df.columns:
+                df['prerequisite_kc_id'] = df['prerequisite_kc_id'].apply(lambda x: kc_prefix + x)
+            # value in kc_ids column is a comma separated list
+            if 'kc_ids' in df.columns:
+                df['kc_ids'] = df['kc_ids'].apply(lambda x: ','.join([kc_prefix + kc_id for kc_id in x.split(',')]))
+
+        if 'collection' in self.prefix:
             collection_prefix = self.prefix['collection']
-            df['collection_id'] = df['collection_id'].apply(lambda x: collection_prefix + x)
+            if 'collection_id' in df.columns:
+                df['collection_id'] = df['collection_id'].apply(lambda x: collection_prefix + x)
+
         return df
 
 
@@ -142,7 +235,6 @@ class Initializer:
         self.bridge_user_pk = bridge_user_pk
         self.bridge_content_source_pk = bridge_content_source_pk
         self.mastery_prior = mastery_prior
-
 
 
     def create_collections(self, dry_run=False):
@@ -226,7 +318,7 @@ class Initializer:
 
     def _construct_lti_provider_url(self, location_id, activity_type):
         """
-        Construct the lti provider url for an activity, based on activity metadata
+        Construct the openedx lti provider url for an activity, based on activity metadata
         :param location_id: location id for activity (e.g. aade69e87a1c4a5fab10616157cbae5c)
         :param activity_type: type of activity (e.g. Question, problem, Reading, html)
         :return: lti provider url / source launch url (e.g. https://example.com/lti_provider/courses/course-v1:HarvardX+SPU30x+2T2018/block-v1:HarvardX+SPU30x+2T2018+type@problem+block@aade69e87a1c4a5fab10616157cbae5c)
@@ -245,6 +337,30 @@ class Initializer:
             self.content_source_host, self.course_id, self.course_id, block_type, location_id
         )
 
+    def _construct_lti_provider_url_from_xblock_url(self, xblock_url):
+        """
+        Convert openedx xblock_url to lti_provider_url
+        :return: lti provider url
+        """
+        # xblock url has format {host}/xblock/block-v1:{course_id}+type@{problem/html}+block@{location}
+        location_id = xblock_url.partition('+block@')[2]
+        activity_type = xblock_url.partition('+type@')[2].partition('+block@')[0]
+        return self._construct_lti_provider_url(location_id, activity_type)
+
+    def _get_url_constructor(self):
+        """
+        Return a function to apply on activity df to produce lti provider url, given google sheet settings
+        :return: function
+        """
+        if self.google_sheet.settings['activity_id_format'] == 'edx_location_id':
+            # openedx lti provider url constructor function to use with pandas apply
+            construct_url = lambda x: self._construct_lti_provider_url(x.activity_id, x.activity_type)
+        elif self.google_sheet.settings['activity_id_format'] == 'edx_xblock_url':
+            construct_url = lambda x: self._construct_lti_provider_url_from_xblock_url(x.activity_id)
+        elif self.google_sheet.settings['activity_id_format'] == 'url':
+            construct_url = lambda x: x.activity_id
+        return construct_url
+
     def create_activities(self, dry_run=False):
         """
         Scan activity sheet on google doc and create activities that don't exist
@@ -253,7 +369,7 @@ class Initializer:
         :return: created object data
         """
 
-        # get collection_id - collection_pk mapping from bridge collection data
+        # get collection_id - collection_pk mapping from bridge collection dataact
         df_collection_bridge = pd.DataFrame(self.bridge_api.request('GET','/collection').json())
         df_collection_bridge_prep = (df_collection_bridge
             [['id', 'slug', 'name']]
@@ -285,21 +401,16 @@ class Initializer:
         # activities (from google sheet) to populate
         df_activity_sheet = self.google_sheet.get_data('activity')
 
-        # rest of function assumes activity_id column is in location_id format so check this
-        # TODO remove when support for other activity_id_format values implemented
-        if not self.google_sheet.activity_id_format == 'location_id':
-            raise NotImplementedError("Use with non location_id formatted activity ids not supported yet")
-
-        # openedx lti provider url constructor function to use with pandas apply
-        construct_url = lambda x: self._construct_lti_provider_url(x.activity_id, x.activity_type)
-
-        # create dataframe of activities with columns ['name', 'collection_pk', 'collection_id', 'url']
+        # create dataframe of activities with columns:
+        # [['url','activity_name','activity_type', 'collection_pk', 'collection_id']]
         df_activity_prep = (df_activity_sheet
-            [['activity_id', 'activity_name', 'collection_id', 'activity_type']]
             .merge(df_collection_bridge_prep, on='collection_id')
-            .assign(url=lambda x: x.apply(construct_url, 1))
-            .rename(columns={'activity_name': 'name'})
         )
+
+        construct_url = self._get_url_constructor()
+
+        df_activity_prep['url'] = df_activity_prep.apply(construct_url, 1)
+        df_activity_prep = df_activity_prep[['url','activity_name','activity_type', 'collection_pk', 'collection_id']]
 
         # TODO can warn if there are activities referencing a collection that doesn't exist in bridge,
         #   and as a result won't be created
@@ -311,8 +422,8 @@ class Initializer:
                     collection=activity.collection_pk,  # this is the collection pk
                     source_launch_url=activity.url,  # full lti provider url
                     lti_consumer=self.bridge_content_source_pk,  # TODO would like better way to handle this
-                    source_name=activity.name,  # name from content source
-                    name=activity.name,  # custom name
+                    source_name=activity.activity_name,  # name from content source
+                    name=activity.activity_name,  # custom name
                     source_context_id=self.course_id,  # TODO to remove when source_context_id field depreciated
                     atype='G',  # G = general, as opposed to questions to pin before/after adaptive portion
                     stype='problem' if self._standardize_activity_type(activity.activity_type)==self.PROBLEM else 'html'
@@ -378,41 +489,30 @@ class Initializer:
 
         return created_objects
 
-
     def update_activity_difficulty(self, dry_run=False):
         """
         Updates difficulty values for activities in engine
         :return: list of updated object data
         """
-        DIFFICULTY_MAPPING = {
+        difficulty_mapping = self.google_sheet.difficulty_mapping or {
             'easy':0.25,
             'medium':0.5,
             'advanced':0.75
         }
-        difficulty_value = lambda x: DIFFICULTY_MAPPING.get(x.difficulty.lower(), np.nan)
-
-        # openedx lti provider url constructor function to use with pandas apply
-        construct_url = lambda x: self._construct_lti_provider_url(x.activity_id, x.activity_type)
+        difficulty_value = lambda x: difficulty_mapping.get(x.difficulty, np.nan)
 
         # need difficulty value from activity sheet
         df_activity_sheet = self.google_sheet.get_data('activity')
         df_activity_sheet_prep = (df_activity_sheet
-            .assign(url=lambda x: x.apply(construct_url, 1))
-            # .rename(columns={'activity_name': 'name'})  # TODO necessary?
             .assign(difficulty=lambda x: x.apply(difficulty_value, 1))
-            [['url', 'difficulty']]
+            [['activity_id','difficulty']]
         )
+        # has columns [url, activity_pk, activity_id]
+        df_activity_base = self._get_update_engine_activity_base_df()
 
-        # get activity pks from engine to use to call patch requests to modify activity metadata (KC tagging, difficulty)
-        df_activity_engine = pd.DataFrame(self.engine_api.request('GET', 'activity').json())
-        df_activity_engine_prep = (df_activity_engine
-            .rename(columns={'id': 'activity_pk', 'source_launch_url': 'url'})
-            [['url', 'activity_pk']]
-        )
-
-        # has columns [activity_pk, url, difficulty]
-        df_activity_merged = (df_activity_engine_prep
-            .merge(df_activity_sheet_prep, on='url')
+        df_activity_merged = (df_activity_sheet_prep
+            .merge(df_activity_base, on='activity_id')
+            [['activity_pk','difficulty']]
         )
 
         # update difficulty values for activities in engine
@@ -441,50 +541,47 @@ class Initializer:
         # has columns [url, activity_pk, activity_id]
         df_activity_base = self._get_update_engine_activity_base_df()
 
-        # download activity-kc sheet and add in activity pk and url
-        df_activity_kc_sheet = self.google_sheet.get_data('activity-kc')  # has columns kc_id, activity_id
-        df_activity_kc_sheet_prep = (df_activity_kc_sheet
-            .merge(df_activity_base, on='activity_id')  # get activity_pk and url from this join
-            [['url', 'kc_id', 'activity_pk', 'activity_id']]
-        )
-
         # get kc engine pk's from this table
         df_kc_engine = pd.DataFrame(self.engine_api.request('GET', 'knowledge_component').json())
         df_kc_engine_prep = (df_kc_engine
             .rename(columns={'id': 'kc_pk'})
             [['kc_pk', 'kc_id']]
         )
+        # dict that maps kc_ids (with prefix) to kc_pks
+        # TODO this has info on all kcs in engine, can subset query
+        mapping_kc_id_pk = df_kc_engine_prep.set_index('kc_id').kc_pk.to_dict()
 
-        # find those activities with more than one kc tagging and make array of pk ids
+        # create series s_activity_kcs with index = activity_id and value = array of kc_ids
 
-        def get_kc_pks(x):
-            """
-            Return kc pk array with all kc pks for the activity
-            operates on potentially multiple rows corresponding to same activity but different tagging
-            assumes kc_id attribute present
-            :param x: dataframe row
-            :return: array of kc primary keys, e.g. [123, 45]
-            """
-            return x.kc_pk.tolist()
+        if self.google_sheet.settings['comma_sep_kc_tagging']:
+            # assumes activity sheet has column "kc_ids" which is an array of kc ids
+            s_activity_kcs = (self.google_sheet.get_data('activity')
+                .set_index('activity_id')
+                .apply(lambda x: [kc_id for kc_id in x.kc_ids.split(',')], 1)
+            )
+        else:
+            # download activity-kc sheet
+            df_activity_kc_sheet = self.google_sheet.get_data('activity-kc')  # has columns kc_id, activity_id
+            s_activity_kcs = (df_activity_kc_sheet
+                .groupby('activity_id')
+                .apply(lambda x: x.kc_id.tolist())  # flatten kc_id values for all rows in group to array
+            )
 
-        # this is a series with index=url and value is an array of kc ids
-        s_activity_kcs = (df_activity_kc_sheet_prep
-            .merge(df_kc_engine_prep, on='kc_id')  # get kc_pk from this join
-            .groupby('activity_id')
-            .apply(get_kc_pks)
-        )
-        s_activity_kcs.name = 'knowledge_components'  # provide a name so corresponding column in joined df has a name
+        # convert kc_ids in array to kc_pks
+        s_activity_kcs = s_activity_kcs.apply(lambda x: [mapping_kc_id_pk[kc_id] for kc_id in x])
+        s_activity_kcs.name = 'kc_pks'  # provide a name so corresponding column in joined df has a name
 
         # activity data table with kc tagging
         # columns: [activity_pk, url, kc_pks]
-        df_activity_merged = (df_activity_kc_sheet_prep
+        df_activity_merged = (df_activity_base  # TODO could this start from df_activity_base instead?
             .join(s_activity_kcs, on='activity_id', how='inner')
+            [['activity_pk', 'kc_pks']]
         )
 
         # update activity tagging in engine:
         updated_objects = []
         for activity in df_activity_merged.itertuples(index=False):
-            data = dict(knowledge_components=activity.knowledge_components)
+            data = dict(knowledge_components=activity.kc_pks)
             request = self.engine_api.prepare('PATCH',"activity/{}".format(activity.activity_pk),json=data)
             if dry_run:
                 updated_objects.append(dict(activity._asdict()))
@@ -499,10 +596,11 @@ class Initializer:
         """
         Get dataframe of activity data with columns [activity_id, url, activity_pk]
         which is useful when updating a metadata field for engine activities
+        # TODO filtering on list endpoints to reduce time and unnecessary data retrieval
         :return: dataframe
         """
         # openedx lti provider url constructor function to use with pandas apply
-        construct_url = lambda x: self._construct_lti_provider_url(x.activity_id, x.activity_type)
+        construct_url = self._get_url_constructor()
 
         # construct url from activity sheet
         df_activity_sheet = self.google_sheet.get_data('activity')
@@ -526,17 +624,16 @@ class Initializer:
 
         return df_activity_merged
 
-
     def update_activity_prerequisites(self, dry_run=False):
         """
-
+        Assign activity - kc tagging to engine activities
         :param dry_run: True for test run, False to modify live bridge/engine
         :return: updated objects
         """
         df_activity_base = self._get_update_engine_activity_base_df()
 
         # download prereq activity sheet
-        df_prereq_activity = self.google_sheet.get_data('prerequisite activity')
+        df_prereq_activity = self.google_sheet.get_data('activity-activity')
         # get engine pks for activities in df_prereq_activity
         df_prereq_activity_prep = (df_prereq_activity
             .merge(df_activity_base[['activity_pk','activity_id']], left_on='dependent_activity_id',right_on='activity_id')
@@ -583,12 +680,12 @@ class Initializer:
         )
 
         # mapping between connection strength category and numeric value
-        CONNECTION_STRENGTH_MAPPING = {
+        connection_strength_mapping = self.google_sheet.connection_strength_mapping or {
             'strong': 1.0,
             'weak': 0.5,
         }
 
-        strength_value = lambda x: CONNECTION_STRENGTH_MAPPING.get(x.connection_strength.lower(), np.nan)
+        strength_value = lambda x: connection_strength_mapping.get(x.connection_strength, np.nan)
 
         # merge in pks with kc-kc data
         df_kc_prereqs_merged = (df_kc_prereqs
