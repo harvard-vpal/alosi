@@ -23,6 +23,7 @@ class BridgeApi(ApiClient):
             metadata
             strict_forward
             owner
+            slug
         """
         return self.client.post(
             self._absolute_url('collection'),
