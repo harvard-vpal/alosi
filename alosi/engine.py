@@ -31,6 +31,42 @@ class BaseAdaptiveEngine:
     def __init__(self):
         pass
 
+    def rank(self):
+        """
+        Typical workflow:
+            get valid activities
+            compute scores for activities
+            return 1 (or n) top items
+        :return:
+        """
+        pass
+
+    def recommend(self):
+        """
+        Return top item from rank
+        """
+        pass
+
+    def update_from_score(self):
+        """
+        Update knowledge tracing
+        :return:
+        """
+        pass
+
+    def train(self):
+        """
+        Update model parameters
+        :return:
+        """
+        pass
+
+
+class BaseAlosiAdaptiveEngine(BaseAdaptiveEngine):
+    """
+    Base alosi adaptive engine
+    """
+
     def get_guess(self, activity=None):
         """
         Get guess parameters for activity/activities
