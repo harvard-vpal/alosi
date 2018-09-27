@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='alosi',
-    version='1.2.0',
+    version='1.2.1',
     description='Utilities for the ALOSI adaptive learning system',
     url='https://github.com/harvard-vpal/alosi',
     author='Andrew Ang',
