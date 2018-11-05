@@ -355,17 +355,19 @@ def calculate_mastery_update(mastery, score, guess, slip, transit, epsilon=EPSIL
     return L
 
 
-def recommendation_score(*, relevance, learner_mastery_odds, prereqs, r_star, L_star, difficulty, W_p, W_r, W_d, W_c,
+def recommendation_score(*, guess, slip, learner_mastery, prereqs, r_star, L_star, difficulty, W_p, W_r, W_d, W_c,
                          last_attempted_relevance=None):
     """
     Computes recommendation scores for activities
+    Typically use something like get_recommend_params() to generate input arguments; params can be passed in any order
     Scores are a weighted average of 4 different scoring substrategies:
         P: Readiness
         R: Remediation / demand
         D: Appropirate Difficulty
         C: Continuity
-    :param relevance: QxK matrix of item-KC relevance values
-    :param learner_mastery_odds: 1xK vector of learner mastery odds values
+    :param guess: QxK matrix of item-KC guess values
+    :param slip: QxK matrix of item-KC slip values
+    :param learner_mastery: 1xK vector of learner mastery odds values
     :param prereqs: QxQ np.array, prerequisite matrix
     :param r_star: Threshold for forgiving lower odds of mastering pre-requisite LOs.
     :param L_star: Threshold logarithmic odds. If mastery logarithmic odds are >= than L_star, the LO is considered mastered
@@ -377,10 +379,15 @@ def recommendation_score(*, relevance, learner_mastery_odds, prereqs, r_star, L_
     :param last_attempted_relevance: 1xK vector of computed relevance values for activity
     :return: np.array of size (Q,) representing [1 x (# activities)] vector of activity recommendation score values
     """
-    P = recommendation_score_P(relevance, learner_mastery_odds, prereqs, r_star, L_star)
-    R = recommendation_score_R(relevance, learner_mastery_odds, L_star)
+    # transformations from raw inputs
+    relevance = calculate_relevance(guess, slip)
+    L = np.log(odds(learner_mastery))
+
+    # calculate activity subscores
+    P = recommendation_score_P(relevance, L, prereqs, r_star, L_star)
+    R = recommendation_score_R(relevance, L, L_star)
     C = recommendation_score_C(relevance, last_attempted_relevance)
-    D = recommendation_score_D(relevance, learner_mastery_odds, difficulty)
+    D = recommendation_score_D(relevance, L, difficulty)
 
     subscores = np.array([P, R, C, D])
 
@@ -396,11 +403,11 @@ def recommendation_score(*, relevance, learner_mastery_odds, prereqs, r_star, L_
     return scores
 
 
-def recommendation_score_P(relevance, learner_mastery_odds, prereqs, r_star, L_star):
+def recommendation_score_P(relevance, L, prereqs, r_star, L_star):
     """
     Compute scores according to Substrategy P
     :param slip: QxK np.array, slip parameter values for activities
-    :param learner_mastery_odds: 1xK vector of learner mastery values
+    :param L: 1xK vector of learner mastery values
     :param prereqs: QxQ np.array, prerequisite matrix
     :param r_star: float, Threshold for forgiving lower odds of mastering pre-requisite LOs.
     :param L_star: float, Threshold logarithmic odds. If mastery logarithmic odds are >= than L_star, the LO is
@@ -412,20 +419,23 @@ def recommendation_score_P(relevance, learner_mastery_odds, prereqs, r_star, L_s
     fillna(m_w)
     # fillna(relevance)
 
-    m_r = np.dot(np.minimum(learner_mastery_odds - L_star, 0), m_w)
+    m_r = np.dot(np.minimum(L - L_star, 0), m_w)
     P = np.dot(relevance, np.minimum((m_r + r_star), 0))
     return P
 
 
-def recommendation_score_R(relevance, learner_mastery_odds, L_star):
+def recommendation_score_R(relevance, L, L_star):
     """
     Computes a recommendation score for each activity according to substrategy R
     :param relevance: (# activities) x (# LOs) np.array of relevance values for activities
-    :param learner_mastery_odds: 1xK vector of learner mastery odds values (L)
-    :param L_star: scalar parameter, representing threshold for mastery odds
+    :param L: 1xK vector of learner mastery log odds values (L)
+    :param L_star: scalar parameter, representing threshold for mastery log odds
     :return: np.array of size (Q,) representing [1 x (# activities)] vector of activity recommendation score values
     """
-    return np.dot(relevance, np.maximum((L_star - learner_mastery_odds), 0))
+    log.debug("relevance: {}".format(relevance))
+    log.debug("L: {}".format(L))
+    log.debug("max(L_star-L,0): {}".format(np.maximum((L_star - L), 0)))
+    return np.dot(relevance, np.maximum((L_star - L), 0))
 
 
 def recommendation_score_C(relevance, last_attempted_relevance=None):
@@ -447,23 +457,21 @@ def recommendation_score_C(relevance, last_attempted_relevance=None):
     return np.sqrt(np.dot(relevance, last_attempted_relevance))
 
 
-def recommendation_score_D(relevance, learner_mastery_odds, difficulty):
+def recommendation_score_D(relevance, L, difficulty):
     """
     Substrategy D
-    learner_mastery_odds: vector of mastery values for learner (1xK)
-    difficulty: vector of item difficulties (Qx1)
     :param relevance: (# activities) x (# LOs) np.array of relevance parameter values for activities
     :param slip: (# activities) x (# LOs) np.array of slip parameter values for activities
-    :param learner_mastery_odds: 1xK vector of learner mastery odds values (L)
+    :param L: 1xK vector of learner mastery log odds values (L)
     :param difficulty: 1xQ np.array, difficulty values for activities
     :return: np.array of size (Q,), representing [1 x (# activities)] vector of activity recommendation score values
     """
-    K = len(learner_mastery_odds)  # number of LOs
+    K = len(L)  # number of LOs
     Q = len(difficulty)  # number of activities
     d_temp = np.tile(difficulty, (K, 1))  # repeated row vectors
-    L_temp = np.tile(learner_mastery_odds, (Q, 1)).T  # repeated column vectors
+    L_temp = np.tile(L, (Q, 1)).T  # repeated column vectors
 
-    return -np.diag(np.dot(relevance, np.abs(L_temp - d_temp)))
+    return -np.diag(np.dot(relevance, np.abs(L_temp - np.log(odds(d_temp)))))
 
 
 def odds(p, epsilon=EPSILON):
