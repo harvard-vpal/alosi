@@ -242,7 +242,7 @@ class BaseAlosiAdaptiveEngine(BaseAdaptiveEngine):
             W_c: (float), weight on substrategy C
             last_attempted_guess: 1xK vector of guess parameters for activity
             last_attempted_slip: 1xK vector of slip parameters for activity
-            learner_mastery_odds: 1xK vector of learner mastery values
+            L: 1xK vector of learner mastery log odds values
         """
         return {
             'guess': self.get_guess(),
@@ -250,7 +250,7 @@ class BaseAlosiAdaptiveEngine(BaseAdaptiveEngine):
             'difficulty': self.get_difficulty(),
             'prereqs': self.get_prereqs(),
             'last_attempted_relevance': self.get_last_attempted_relevance(learner),
-            'learner_mastery_odds': self.get_learner_mastery(learner),
+            'L': np.log(odds(self.get_learner_mastery(learner))),
             'r_star': self.get_r_star(),
             'L_star': self.get_L_star(),
             'W_p': self.get_W_p(),
