@@ -490,21 +490,25 @@ def odds(p, epsilon=EPSILON):
 def calculate_relevance_from_odds(guess_odds, slip_odds):
     """
     Compute relevance element-wise
+    Fills any NaN value with 0.0
     Arguments:
         guess_odds (np.array)
         slip_odds (np.array)
     """
-    return -np.log(guess_odds)-np.log(slip_odds)
+    r = -np.log(guess_odds)-np.log(slip_odds)
+    return fillna(r, 0.0)
 
 
 def calculate_relevance(guess, slip):
     """
     Compute relevance element-wise
+    Fills any NaN value with 0.0
     :param guess: (np.array) guess probability values
     :param slip: (np.array) slip probability values
     :return: (np.array) same size as inputs
     """
-    return -np.log(odds(guess))-np.log(odds(slip))
+    r = -np.log(odds(guess))-np.log(odds(slip))
+    return fillna(r, 0.0)
 
 
 def knowledge(scores, guess, slip):
