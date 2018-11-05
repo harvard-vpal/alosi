@@ -17,5 +17,7 @@ setup(
         'google-auth>=1.5.0',
         'google-auth-oauthlib>=0.2.0',
         'gspread>=3.0.0',
-    ]
+    ],
+    use_scm_version=True,
+    setup_requires=['setuptools_scm']
 )
