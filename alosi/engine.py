@@ -394,12 +394,12 @@ def recommendation_score(*, guess, slip, learner_mastery, prereqs, r_star, L_sta
     # log individual subscores for debugging
     subscore_labels = ['P', 'R', 'C', 'D']
     for subscore, label in zip(subscores, subscore_labels):
-        log.debug('Subscore {}: {}'.format(label, subscore))
+        log.debug('[recommendation_score] Subscore {}: {}'.format(label, subscore))
 
     # compute weighted average of subscores
     weights = np.array([W_p, W_r, W_d, W_c])
     scores = np.dot(weights, subscores)
-    log.debug("Combined activity scores: {}".format(scores))
+    log.debug("[recommendation_score] Combined activity scores: {}".format(scores))
     return scores
 
 
