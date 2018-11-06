@@ -358,7 +358,7 @@ def calculate_mastery_update(mastery, score, guess, slip, transit, epsilon=EPSIL
 
 
 def recommendation_score(*, guess, slip, learner_mastery, prereqs, r_star, L_star, difficulty, W_p, W_r, W_d, W_c,
-                         last_attempted_relevance=None):
+                         last_attempted_guess=None, last_attempted_slip=None):
     """
     Computes recommendation scores for activities
     Typically use something like get_recommend_params() to generate input arguments; params can be passed in any order
@@ -382,7 +382,9 @@ def recommendation_score(*, guess, slip, learner_mastery, prereqs, r_star, L_sta
     :return: np.array of size (Q,) representing [1 x (# activities)] vector of activity recommendation score values
     """
     # transformations from raw inputs
+    # calculate_relevance() uses 0.0 for relevance elements with corresponding NaN guess/slip values
     relevance = calculate_relevance(guess, slip)
+    last_attempted_relevance = calculate_relevance(last_attempted_guess, last_attempted_slip)
     L = np.log(odds(learner_mastery))
 
     # calculate activity subscores
