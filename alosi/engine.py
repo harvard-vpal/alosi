@@ -226,6 +226,8 @@ class BaseAlosiAdaptiveEngine(BaseAdaptiveEngine):
     def get_recommend_params(self, learner):
         """
         Retrieve features/params needed for doing recommendation
+        Output parameters in dict are intended to be numeric or arrays of numerics; Subclassed engines may override
+            this or the methods called to do object conversion (possibly after database retrieval) to numeric
         Calls data/param retrieval functions that may be implementation(prod vs. prototype)-specific
         TODO: could subset params based on activities in collection scope, to reduce unneeded computation
         :param learner:
