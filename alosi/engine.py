@@ -226,6 +226,8 @@ class BaseAlosiAdaptiveEngine(BaseAdaptiveEngine):
     def get_recommend_params(self, learner):
         """
         Retrieve features/params needed for doing recommendation
+        Output parameters in dict are intended to be numeric or arrays of numerics; Subclassed engines may override
+            this or the methods called to do object conversion (possibly after database retrieval) to numeric
         Calls data/param retrieval functions that may be implementation(prod vs. prototype)-specific
         TODO: could subset params based on activities in collection scope, to reduce unneeded computation
         :param learner:
@@ -356,7 +358,7 @@ def calculate_mastery_update(mastery, score, guess, slip, transit, epsilon=EPSIL
 
 
 def recommendation_score(*, guess, slip, learner_mastery, prereqs, r_star, L_star, difficulty, W_p, W_r, W_d, W_c,
-                         last_attempted_relevance=None):
+                         last_attempted_guess=None, last_attempted_slip=None):
     """
     Computes recommendation scores for activities
     Typically use something like get_recommend_params() to generate input arguments; params can be passed in any order
@@ -380,8 +382,14 @@ def recommendation_score(*, guess, slip, learner_mastery, prereqs, r_star, L_sta
     :return: np.array of size (Q,) representing [1 x (# activities)] vector of activity recommendation score values
     """
     # transformations from raw inputs
+    # calculate_relevance() uses 0.0 for relevance elements with corresponding NaN guess/slip values
     relevance = calculate_relevance(guess, slip)
+    if last_attempted_guess is None and last_attempted_slip is None:
+        last_attempted_relevance = None
+    else:
+        last_attempted_relevance = calculate_relevance(last_attempted_guess, last_attempted_slip)
     L = np.log(odds(learner_mastery))
+    difficulty = fillna(difficulty, value=0.5)
 
     # calculate activity subscores
     P = recommendation_score_P(relevance, L, prereqs, r_star, L_star)
@@ -394,12 +402,12 @@ def recommendation_score(*, guess, slip, learner_mastery, prereqs, r_star, L_sta
     # log individual subscores for debugging
     subscore_labels = ['P', 'R', 'C', 'D']
     for subscore, label in zip(subscores, subscore_labels):
-        log.debug('Subscore {}: {}'.format(label, subscore))
+        log.debug('[recommendation_score] Subscore {}: {}'.format(label, subscore))
 
     # compute weighted average of subscores
     weights = np.array([W_p, W_r, W_d, W_c])
     scores = np.dot(weights, subscores)
-    log.debug("Combined activity scores: {}".format(scores))
+    log.debug("[recommendation_score] Combined activity scores: {}".format(scores))
     return scores
 
 
