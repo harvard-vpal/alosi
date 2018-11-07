@@ -386,6 +386,7 @@ def recommendation_score(*, guess, slip, learner_mastery, prereqs, r_star, L_sta
     relevance = calculate_relevance(guess, slip)
     last_attempted_relevance = calculate_relevance(last_attempted_guess, last_attempted_slip)
     L = np.log(odds(learner_mastery))
+    difficulty = fillna(difficulty, value=0.5)
 
     # calculate activity subscores
     P = recommendation_score_P(relevance, L, prereqs, r_star, L_star)
