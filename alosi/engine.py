@@ -384,7 +384,10 @@ def recommendation_score(*, guess, slip, learner_mastery, prereqs, r_star, L_sta
     # transformations from raw inputs
     # calculate_relevance() uses 0.0 for relevance elements with corresponding NaN guess/slip values
     relevance = calculate_relevance(guess, slip)
-    last_attempted_relevance = calculate_relevance(last_attempted_guess, last_attempted_slip)
+    if last_attempted_guess is None and last_attempted_slip is None:
+        last_attempted_relevance = None
+    else:
+        last_attempted_relevance = calculate_relevance(last_attempted_guess, last_attempted_slip)
     L = np.log(odds(learner_mastery))
     difficulty = fillna(difficulty, value=0.5)
 
