@@ -3,7 +3,7 @@ from time import sleep
 from json import JSONDecodeError
 import pandas as pd
 import numpy as np
-from alosi.google_drive import export_sheet_to_dataframe
+from alosi.data.google_drive import export_sheet_to_dataframe
 
 
 log = logging.getLogger(__name__)

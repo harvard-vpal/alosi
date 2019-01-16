@@ -34,6 +34,7 @@ def get_service_account_credentials(credential_file=None, scopes=SCOPES):
     """
     Get credentials using a service account credential file
     Supports retrieving credential file location from GOOGLE_APPLICATION_CREDENTIALS env variable
+    TODO also allow generation from credential text data
 
     :param credential_file: (str) location of service account credential file (e.g. '/path/to/file.json`)
     :param scopes: (list) auth scope, e.g. ['https://www.googleapis.com/auth/drive']
