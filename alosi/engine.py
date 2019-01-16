@@ -337,8 +337,8 @@ def x1_0_mult(guess, slip):
 
 def calculate_mastery_update(mastery, score, guess, slip, transit, epsilon=EPSILON):
     """
-    Calculate bayesian update of learner mastery based on new score information
-    :param mastery: 1xL np.array vector of current mastery parameters for learner
+    Calculate bayesian update of learner mastery odds based on new score information
+    :param mastery: 1xL np.array vector of current mastery odds values for learner
     :param score: float, score value for activity between 0.0 and 1.0
     :param guess: 1xL np.array vector of guess parameters for activity
     :param slip: 1xL np.array vector of slip parameters for activity
@@ -348,13 +348,12 @@ def calculate_mastery_update(mastery, score, guess, slip, transit, epsilon=EPSIL
     """
     # The increment of odds due to evidence of the problem, but before the transfer
     x = x0_mult(guess, slip) * np.power(x1_0_mult(guess, slip), score)
-    L = mastery * x
-    # Add the transferred knowledge
-    L += transit * (L + 1)
+    # Mastery odds update rule
+    new_mastery_odds = transit + (transit + 1) * (mastery * x)
     # Clean up invalid values
-    L[np.where(np.isposinf(L))] = 1.0 / epsilon
-    L[np.where(L == 0.0)] = epsilon
-    return L
+    new_mastery_odds[np.where(np.isposinf(new_mastery_odds))] = odds(1.0)
+    new_mastery_odds[np.where(new_mastery_odds == 0.0)] = odds(0.0)
+    return new_mastery_odds
 
 
 def recommendation_score(*, guess, slip, learner_mastery, prereqs, r_star, L_star, difficulty, W_p, W_r, W_d, W_c,
