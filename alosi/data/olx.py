@@ -1,10 +1,24 @@
 import os
 import tarfile
 import shutil
+from types import FunctionType
 import tempfile
 from lxml import etree
 from alosi.data.google_drive import export_sheet_to_dataframe
 from pandas import Categorical
+
+
+etree_write_default_params = dict(encoding="utf-8", pretty_print=True)
+
+
+def write_xml_to_file(element_tree, relative_path, parent_dir):
+    """
+    Write etree.ElementTree to file by relative location within course export directory with default formatting
+    :param element_tree: etree.ElementTree object
+    :param relative_path: relative location within course export directory (after tmpdir/course/...)
+    """
+    target = os.path.join(parent_dir, relative_path)
+    element_tree.write(target, **etree_write_default_params)
 
 
 class Node:
@@ -97,6 +111,7 @@ class Problem(Node):
     def to_xml(self):
         """
         Override base to_xml() method
+        Build xml problem content
         {body, options, correct_option} are required
         display_name, explanation are optional
         :rtype: etree.ElementTree
@@ -151,57 +166,46 @@ class TemplateComponent(Node):
         self.params = params
         self.node_type = node_type
 
+    def render_template(self):
+        """
+        :return: rendered template string
+        """
+        return self.template.render(self.params)
+
     def to_xml(self):
         """
         Render template and return problem xml etree
         :return: problem xml
         :rtype: etree.ElementTree
         """
+        rendered_template = self.render_template()
         parser = etree.XMLParser(remove_blank_text=True)
         try:
-            return etree.ElementTree(etree.fromstring(self.template.render(self.params), parser))
+            return etree.ElementTree(etree.fromstring(self.render_template()))
         except Exception as e:
-            print(self.template.render(self.params))
+            print(self.render_template())
             raise e
+
+    def to_file(self, relative_path, parent_dir):
+        """
+        Create xml file in course export folder
+        Renders template and writes xml data to file
+        :param relative_path: location within course directory
+        :param parent_dir: top-level course export folder
+        :return: None
+        """
+        write_xml_to_file(self.to_xml(), relative_path, parent_dir)
 
 
 class FileComponent(Node):
     """
-    TODO
-    Component that has its xml already in a file
+    Component that generates its xml by reading from file
     """
-    pass
+    def __init__(self):
+        pass
 
-
-class TemplateComponentBuilder:
-    """
-    Class to initialize OlxCourseBuilder with
-    Initialize class with callable to convert pandas row to vars, template
-    Include method to initialize Problem instance
-    """
-    def __init__(self, display_name, url_name, template, param_builder, node_type='problem'):
-        """
-
-        :param display_name: callable that generates display name value based on spreadsheet row (represented as named tuple)
-        :param url_name: callable that generates url_name value based on spreadsheet row (represented as named tuple)
-        :param template: jinja template for component
-        :param param_builder: callable to transform spreadsheet row to template input
-        :param node_type: xml node type, defaults to 'problem'
-        """
-        self.display_name = display_name
-        self.url_name = url_name
-        self.template = template
-        self.param_builder = param_builder
-        self.node_type = node_type
-
-    def build_component(self, row):
-        """
-        Initialize TemplateComponent instance based on a spreadsheet row
-        :param row: named tuple representing spreadsheet row
-        :return: TemplateComponent instance
-        """
-        return TemplateComponent(self.display_name(row), self.url_name(row), self.template, self.param_builder(row),
-                               node_type=self.node_type)
+    def to_xml(self):
+        etree.parse("{}/course/course/course.xml".format(tmpdir), parser)
 
 
 class FileComponentBuilder:
@@ -213,7 +217,7 @@ class FileComponentBuilder:
         self.path_builder = path_builder
 
     def build_component(self, row):
-        return FileComponent(display_name, file_location, url_name=None)
+        return FileComponent(self.display_name(row), self.url_name(row), file_location, url_name=None)
 
 
 class Course:
@@ -290,7 +294,7 @@ class Course:
 
                 # create nested sequentials
                 for sequential in chapter.sequentials:
-                    self._write_to_xml(sequential.to_xml(), f'sequential/{sequential.url_name}', course_dir)
+                    self._write_to_xml(sequential.to_xml(), f'sequential/{sequential.url_name}.xml', course_dir)
 
                     # create nested verticals
                     for vertical in sequential.verticals:
@@ -298,7 +302,8 @@ class Course:
 
                         # create nested components
                         for problem in vertical.components:
-                            self._write_to_xml(problem.to_xml(), f'problem/{problem.url_name}.xml', course_dir)
+                            problem.to_file(f'problem/{problem.url_name}.xml', course_dir)
+                            # self._write_to_xml(problem.to_xml(), f'problem/{problem.url_name}.xml', course_dir)
 
             # modify course/course.xml to include chapter references
             # https://lxml.de/FAQ.html#why-doesn-t-the-pretty-print-option-reformat-my-xml-output
@@ -417,12 +422,12 @@ class OlxCourseBuilder:
         'vertical': lambda chapter, sequential, vertical: f'{chapter}{sequential}{vertical}'
     }
 
-    def __init__(self, data, component_builder, course_params=None, levels=None,
+    def __init__(self, data, component_factory, course_params=None, levels=None,
                  sort_order=None, url_name=None, template=None, defaults={}):
         """
         #TODO validation checks to scan for blank values (e.g. body)
         :param data: data source object (e.g. GoogleSheetSource)
-        :param component_builder: component builder object (e.g. TemplateComponentBuilder)
+        :param component_builder: callable that takes as input spreadsheet row and returns a Component instance
         :param course_params: course-level info (i.e. display_name, start date), required if no template
         :param levels: dict mapping standard olx heirarchy levels [chapter, sequential, vertical, component]
             to corresponding column names in sheet. e.g. dict(chapter=part, sequential=lesson, ... )
@@ -443,13 +448,12 @@ class OlxCourseBuilder:
 
         """
         self.df = data.df
-        self.component_builder = component_builder
+        self.component_factory = component_factory
         self.levels = levels
         self.sort_order = sort_order
         self.url_name = {**self.url_name, **url_name}
         self.sheet_df = self.prepare_sheet_df(sort_order=sort_order, defaults=defaults)
         self.defaults = defaults
-        self.component_builder = component_builder
         self.course_params = course_params
         self.template = template
         self.course = self._build_course()
@@ -476,7 +480,11 @@ class OlxCourseBuilder:
                 df[column] = default_value
 
         # rename columns to standard names
-        df = df.rename(columns={v:k for k,v in self.levels.items()})
+        # df = df.rename(columns={v:k for k,v in self.levels.items()})
+
+        # build standard level columns (chapter/sequential/...)
+        # apply callables passed in via levels parameter, to rename columns or apply transforms
+        df = df.assign(**self.levels)
 
         return df
 
@@ -520,7 +528,8 @@ class OlxCourseBuilder:
                     # create problems
                     for row in vertical_group.itertuples():
                         # create Problem instance using the problem builder class passed in on init
-                        problem = self.component_builder.build_component(row)
+                        # problem = self.component_builder.build_component(row)
+                        problem = self.component_factory(row)
                         vertical.components.append(problem)
                     # append vertical to sequential
                     sequential.verticals.append(vertical)
