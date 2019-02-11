@@ -11,14 +11,14 @@ from pandas import Categorical
 etree_write_default_params = dict(encoding="utf-8", pretty_print=True)
 
 
-def write_xml_to_file(element_tree, relative_path, parent_dir):
+def write_xml_to_file(element_tree, target_path, **write_params):
     """
     Write etree.ElementTree to file by relative location within course export directory with default formatting
     :param element_tree: etree.ElementTree object
     :param relative_path: relative location within course export directory (after tmpdir/course/...)
     """
-    target = os.path.join(parent_dir, relative_path)
-    element_tree.write(target, **etree_write_default_params)
+    default_write_params = {'encoding':'utf-8', 'pretty_print':True, **write_params}
+    element_tree.write(target_path, **default_write_params)
 
 
 class Node:
@@ -153,6 +153,9 @@ class TemplateComponent(Node):
     """
     Component that generates its xml by rendering a template
     """
+    # default parser settings
+    default_parser = etree.XMLParser(remove_blank_text=True)
+
     def __init__(self, display_name, url_name, template, params, node_type='problem'):
         """
         :param display_name: display_name value
@@ -179,45 +182,48 @@ class TemplateComponent(Node):
         :rtype: etree.ElementTree
         """
         rendered_template = self.render_template()
-        parser = etree.XMLParser(remove_blank_text=True)
+
         try:
             return etree.ElementTree(etree.fromstring(self.render_template()))
         except Exception as e:
             print(self.render_template())
             raise e
 
-    def to_file(self, relative_path, parent_dir):
+    def to_file(self, target_path):
         """
         Create xml file in course export folder
         Renders template and writes xml data to file
-        :param relative_path: location within course directory
-        :param parent_dir: top-level course export folder
+        :param target_path: output location
         :return: None
         """
-        write_xml_to_file(self.to_xml(), relative_path, parent_dir)
+        write_xml_to_file(self.to_xml(), target_path)
 
 
 class FileComponent(Node):
     """
     Component that generates its xml by reading from file
     """
-    def __init__(self):
-        pass
+    # default parser settings
+    default_parser = etree.XMLParser(remove_blank_text=True)
+
+    def __init__(self, source_path, node_type='problem', url_name=None):
+        """
+        :param filepath: location where source xml file can be found
+        """
+        self.source_path = source_path
+        self.node_type = node_type
+        self.url_name = url_name
+
 
     def to_xml(self):
-        etree.parse("{}/course/course/course.xml".format(tmpdir), parser)
+        etree.parse(self.source_path, self.default_parser)
 
-
-class FileComponentBuilder:
-    """
-    Class to initialize OlxCourse Builder with, when using pre-generated xml files as components
-    Main functionality is to use info from spreadsheet to retrieve file
-    """
-    def __init__(self, path_builder):
-        self.path_builder = path_builder
-
-    def build_component(self, row):
-        return FileComponent(self.display_name(row), self.url_name(row), file_location, url_name=None)
+    def to_file(self, target_path):
+        """
+        :param target_path: output location
+        :return:
+        """
+        shutil.copyfile(self.source_path, target_path)
 
 
 class Course:
@@ -261,7 +267,7 @@ class Course:
             for component in vertical.components:
                 yield component
 
-    def build_export(self, output_name=None, template=None, as_tarball=True):
+    def export(self, output_name=None, template=None, as_tarball=True):
         """
         Creates assets in chapter, sequential, vertical, problem folders
         Creates folders if needed, overwrites items with same url_name
@@ -290,20 +296,19 @@ class Course:
 
             # build chapters
             for chapter in self.chapters:
-                self._write_to_xml(chapter.to_xml(), f'chapter/{chapter.url_name}.xml', course_dir)
+                self._write_to_xml(chapter.to_xml(), f'{course_dir}/chapter/{chapter.url_name}.xml')
 
                 # create nested sequentials
                 for sequential in chapter.sequentials:
-                    self._write_to_xml(sequential.to_xml(), f'sequential/{sequential.url_name}.xml', course_dir)
+                    self._write_to_xml(sequential.to_xml(), f'{course_dir}/sequential/{sequential.url_name}.xml')
 
                     # create nested verticals
                     for vertical in sequential.verticals:
-                        self._write_to_xml(vertical.to_xml(), f'vertical/{vertical.url_name}.xml', course_dir)
+                        self._write_to_xml(vertical.to_xml(), f'{course_dir}/vertical/{vertical.url_name}.xml')
 
                         # create nested components
                         for problem in vertical.components:
-                            problem.to_file(f'problem/{problem.url_name}.xml', course_dir)
-                            # self._write_to_xml(problem.to_xml(), f'problem/{problem.url_name}.xml', course_dir)
+                            problem.to_file(f'{course_dir}/problem/{problem.url_name}.xml')
 
             # modify course/course.xml to include chapter references
             # https://lxml.de/FAQ.html#why-doesn-t-the-pretty-print-option-reformat-my-xml-output
@@ -332,14 +337,15 @@ class Course:
 
 
     @staticmethod
-    def _write_to_xml(element_tree, relative_path, parent_dir):
+    def _write_to_xml(element_tree, target_path, **kwargs):
         """
         Write etree.ElementTree to file by relative location within course export directory with default formatting
         :param element_tree: etree.ElementTree object
-        :param relative_path: relative location within course export directory (after tmpdir/course/...)
+        :param target_path: location to write file to
+        :param kwargs: keyword args to pass to ElementTree.write()
         """
-        target = os.path.join(parent_dir, relative_path)
-        element_tree.write(target, encoding="utf-8", pretty_print=True)
+        write_params = {'encoding':'utf-8', 'pretty_print':True, **kwargs}
+        element_tree.write(target_path, **write_params)
 
     def _make_tarfile(self, output_filename, source_dir):
         """
@@ -370,8 +376,8 @@ class Course:
         """
         course_dir = os.path.join(tmpdir, 'course')
         os.makedirs(os.path.join(course_dir, 'course'))
-        self._write_to_xml(self._build_top_level_course_xml(), 'course.xml', course_dir)
-        self._write_to_xml(self._build_base_course_xml(), 'course/course.xml', course_dir)
+        self._write_to_xml(self._build_top_level_course_xml(), os.path.join(course_dir, 'course.xml'))
+        self._write_to_xml(self._build_base_course_xml(), os.path.join(course_dir, 'course/course.xml'))
 
     def _build_top_level_course_xml(self):
         """
@@ -395,15 +401,62 @@ class Course:
         return etree.ElementTree(root)
 
 
-class GoogleSheetSource:
+class SheetSource:
     """
-    Google sheet containing question data to use when creating olx resources
-    :param file_id: google sheet file id
-    :param credentials: google credential object
-    :param worksheet_title: title of google sheet worksheet to get items from
+    Data source with info about components (possibly content) and how to organize them in export output
     """
-    def __init__(self, file_id, credentials, worksheet_title=None):
-        self.df = export_sheet_to_dataframe(file_id, credentials, worksheet_title=worksheet_title)
+    def __init__(self, df, levels={}):
+        """
+        Download google sheet as dataframe, and standardize column names and values
+        :param df: pandas dataframe
+        :param levels: dict mapping standard olx heirarchy levels [chapter, sequential, vertical, component]
+            to corresponding column names in sheet. e.g. dict(chapter=part, sequential=lesson, ... )
+        """
+        self.levels = levels
+        self.df = self.prepare_sheet_df(df)
+
+    @classmethod
+    def from_google_sheet(cls, file_id, credentials, worksheet_title=None, **kwargs):
+        """
+        Initialize from google sheet
+        :param file_id: google sheet file id
+        :param credentials: google credential object
+        :param worksheet_title: title of google sheet worksheet to get items from
+        :param kwargs: additional kwargs (e.g. level) to pass to SheetSource constructor
+        :return: SheetSource instance
+        """
+        df = export_sheet_to_dataframe(file_id, credentials, worksheet_title)
+        return cls(df, **kwargs)
+
+    @classmethod
+    def from_csv(cls, filename, **kwargs):
+        """
+        Initialize from local csv file
+        :param filename: path to local csv file
+        :param kwargs:
+        :return:
+        """
+        return cls(pd.read_csv(filename), **kwargs)
+
+    def prepare_sheet_df(self, df, sort_order={}, defaults={}):
+        """
+        Clean dataframe, apply any custom column transforms or renaming
+        :return: dataframe
+        """
+        # convert columns to categorical if custom sorting provided
+        for column_to_sort, sorted_values in sort_order.items():
+            df[column_to_sort] = Categorical(df[column_to_sort], sorted_values)
+
+        # populate defaults
+        for column, default_value in defaults.items():
+            if column not in df.columns:
+                df[column] = default_value
+
+        # build standard level columns (chapter/sequential/...)
+        # apply callables passed in via levels parameter, to rename columns or apply transforms
+        df = df.assign(**self.levels)
+
+        return df
 
 
 class OlxCourseBuilder:
@@ -422,16 +475,14 @@ class OlxCourseBuilder:
         'vertical': lambda chapter, sequential, vertical: f'{chapter}{sequential}{vertical}'
     }
 
-    def __init__(self, data, component_factory, course_params=None, levels=None,
-                 sort_order=None, url_name=None, template=None, defaults={}):
+    def __init__(self, data_source, component_factory, course_params=None,
+                 sort_order={}, url_name=None, template=None):
         """
         #TODO validation checks to scan for blank values (e.g. body)
         :param data: data source object (e.g. GoogleSheetSource)
         :param component_builder: callable that takes as input spreadsheet row and returns a Component instance
         :param course_params: course-level info (i.e. display_name, start date), required if no template
-        :param levels: dict mapping standard olx heirarchy levels [chapter, sequential, vertical, component]
-            to corresponding column names in sheet. e.g. dict(chapter=part, sequential=lesson, ... )
-        :param sort_order: dict mapping from standard olx levels to list of values if non-alphabetical sort order desired
+
             example: dict(colname1 = [val2, val1, val3], colname2 = [v1, v3, v2])
             keys are colnames as they appear in sheet (not necessarily standardized version)
         :param template: name of .tar.gz file to base new course off of
@@ -445,58 +496,23 @@ class OlxCourseBuilder:
             {
                 max_attempts: 1
             }
+        :param sort_order: dict mapping from standard olx levels to list of values if non-alphabetical sort order desired
+        :param worksheet_title: worksheet title in google sheet
 
         """
-        self.df = data.df
+        self.df = data_source.df
         self.component_factory = component_factory
-        self.levels = levels
         self.sort_order = sort_order
         self.url_name = {**self.url_name, **url_name}
-        self.sheet_df = self.prepare_sheet_df(sort_order=sort_order, defaults=defaults)
-        self.defaults = defaults
         self.course_params = course_params
-        self.template = template
-        self.course = self._build_course()
+        self.template = template  # course export template
 
         # arg validation
         if not course_params:
             if not template:
                 raise ValueError("Template argument required if no course metadata provided")
 
-    def prepare_sheet_df(self, sort_order={}, defaults={}):
-        """
-        Download google sheet as dataframe, and standardize column names and values
-        :return: dataframe
-        """
-        df = self.df
-
-        # convert columns to categorical if custom sorting provided
-        for column_to_sort, sorted_values in sort_order.items():
-            df[column_to_sort] = Categorical(df[column_to_sort], sorted_values)
-
-        # populate defaults
-        for column, default_value in defaults.items():
-            if column not in df.columns:
-                df[column] = default_value
-
-        # rename columns to standard names
-        # df = df.rename(columns={v:k for k,v in self.levels.items()})
-
-        # build standard level columns (chapter/sequential/...)
-        # apply callables passed in via levels parameter, to rename columns or apply transforms
-        df = df.assign(**self.levels)
-
-        return df
-
-    def export_course(self, output_name, as_tarball=True):
-        """
-        Export course to .tar.gz file
-        :param output_name: name of .tar.gz file to create, e.g. "mycourse.tar.gz". if as_tarball=False, .tar.gz is appended if not already at end
-        :param as_tarball: False if course export should be left as folder, True if course export should be a .tar.gz archive
-        """
-        self.course.build_export(output_name, template=self.template, as_tarball=as_tarball)
-
-    def _build_course(self):
+    def to_course(self):
         """
         Create and populate course object with chapters, sequentials, verticals and components based on google sheet
         :return: populated Course object
@@ -504,7 +520,7 @@ class OlxCourseBuilder:
         # parse spreadsheet of items and create chapter objects (with nested objects)
         course = Course(**self.course_params)
 
-        for chapter_label, chapter_group in self.sheet_df.groupby('chapter'):
+        for chapter_label, chapter_group in self.df.groupby('chapter'):
             # create a chapter object
             chapter = Chapter(
                 chapter_label,
@@ -527,18 +543,13 @@ class OlxCourseBuilder:
                     )
                     # create problems
                     for row in vertical_group.itertuples():
-                        # create Problem instance using the problem builder class passed in on init
-                        # problem = self.component_builder.build_component(row)
+                        # create Problem instance using the component factory
                         problem = self.component_factory(row)
                         vertical.components.append(problem)
                     # append vertical to sequential
                     sequential.verticals.append(vertical)
-                # print("Appending sequential to chapter")
                 # append sequential to chapter
                 chapter.sequentials.append(sequential)
-                # print(len(chapter.sequentials))
             # append chapter to course-level object
-            # print(len(chapter.sequentials))
             course.chapters.append(chapter)
-        # print(len(chapter.sequentials))
         return course
