@@ -6,6 +6,7 @@ import tempfile
 from lxml import etree
 from alosi.data.google_drive import export_sheet_to_dataframe
 from pandas import Categorical
+import pandas as pd
 
 
 etree_write_default_params = dict(encoding="utf-8", pretty_print=True)
