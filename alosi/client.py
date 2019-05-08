@@ -4,7 +4,7 @@ from .models import Activity, Collection, KnowledgeComponent
 
 
 class AlosiClient:
-    def __init__(self, bridge_host, bridge_token, bridge_owner_pk, engine_host, engine_token, content_source_pk):
+    def __init__(self, *, bridge_host, bridge_token, bridge_owner_pk, engine_host, engine_token, content_source_pk):
         self.bridge_api = BridgeApi(bridge_host, token=bridge_token)
         self.engine_api = EngineApi(engine_host, token=engine_token)
         self.bridge_owner_pk = bridge_owner_pk
@@ -31,6 +31,8 @@ class AlosiClient:
 
     def push(self, *, collections, activities, knowledge_components):
         """
+        Main user entrypoint for pushing client objects to remote systems
+
         '*' in arguments requires subsequent arguments to be passed with keywords
         
         :param collections: collections
@@ -48,5 +50,3 @@ class AlosiClient:
             # this also has the effect of initializing the activities and tagging / kc dependencies if they are not already initialized
             activity_set = [activity for activity in activities if activity.collection is collection]
             collection.push(activity_set)
-
-        
