@@ -2,3 +2,4 @@ numpy
 pytest
 setuptools_scm
 twine
+cached_property
