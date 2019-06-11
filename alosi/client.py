@@ -4,7 +4,7 @@ from .models import Activity, Collection, KnowledgeComponent
 
 
 class AlosiClient:
-    def __init__(self, *, bridge_host=None, bridge_token=None, bridge_owner_pk=None, engine_host=None, engine_token=None, content_source_pk=None):
+    def __init__(self, *, bridge_host=None, bridge_token=None, bridge_owner_pk=None, engine_host=None, engine_token=None, content_source_pk=None, enabled=None):
         """
         Initialize client with configuration and credentials.
         For some use cases involving subsets of systems, some groups of parameters may not be needed
@@ -17,10 +17,15 @@ class AlosiClient:
         :param engine_host: Base URL of engine application
         :param engine_token: API token for engine
         """
+        # enabled clients tracks which API interfaces are enabled based on
+        # presence of required input parameters. Could be passed in explicitly
+        self.enabled = set(enabled) if enabled is not None else set(['engine','bridge'])
         if bridge_host:
             self.bridge_api = BridgeApi(bridge_host, token=bridge_token)
+            self.enabled.add('bridge')
         if engine_host:
             self.engine_api = EngineApi(engine_host, token=engine_token)
+            self.enabled.add('engine')
         self.bridge_owner_pk = bridge_owner_pk
         self.content_source_pk = 1
 

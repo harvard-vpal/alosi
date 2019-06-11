@@ -489,7 +489,15 @@ class EngineKnowledgeComponent(EngineApiModelMixin, ApiModel):
 class Activity:
     def __init__(self, client, collection, url, name, activity_type='problem', difficulty=None, 
         knowledge_components=None, prerequisite_activities=None):
-        """Activity
+        """
+        Metadata parameters:
+            collection
+            url
+            name
+            activity_type
+            difficulty
+            knowledge_components
+            prerequisite_activities
         
         :param collection: collection to which activity belongs
         :type collection: Collection
@@ -500,8 +508,8 @@ class Activity:
         :param activity_type: content type, e.g. problem, html
         :type activity_type: str
         """
-        self.bridge = BridgeActivity(client, self)
-        self.engine = EngineActivity(client, self)
+        self.bridge = BridgeActivity(client, self) if 'bridge' in client.enabled else None
+        self.engine = EngineActivity(client, self) if 'engine' in client.enabled else None
 
         self.collection = collection
         self.url = url
@@ -514,30 +522,47 @@ class Activity:
         self.prerequisite_activities = prerequisite_activities or []
 
     def push(self):
-        self.engine.update()
-        self.bridge.update()
+        if self.engine:
+            self.engine.update()
+        if self.bridge:
+            self.bridge.update()
 
 
 class Collection:
     def __init__(self, client, *, slug, name):
-        self.engine = EngineCollection(client, self)
-        self.bridge = BridgeCollection(client, self)
+        """
+        Required metadata params:
+            slug
+            name
+        """
+        self.engine = EngineCollection(client, self) if 'engine' in client.enabled else None
+        self.bridge = BridgeCollection(client, self) if 'bridge' in client.enabled else None
 
         self.slug = slug
         self.name = name
 
     def push(self, activity_set=None):
-        self.engine.update()
-        self.bridge.update()
+        if self.engine:
+            self.engine.update()
+        if self.bridge:
+            self.bridge.update()
         # also push activity set if one is provided, otherwise just update collection metadata
         if activity_set is not None:
-            self.engine.update_activity_set([a.engine for a in activity_set])
-            self.bridge.update_activity_set([a.bridge for a in activity_set])
+            if self.engine:
+                self.engine.update_activity_set([a.engine for a in activity_set])
+            if self.bridge:
+                self.bridge.update_activity_set([a.bridge for a in activity_set])
 
 
 class KnowledgeComponent:
     """
     Knowledge component
+
+    Metadata parameters:
+        name
+        slug
+        prerequisite_knowledge_components
+        mastery_prior
     """
     def __init__(self, client, *, name, slug, prerequisite_knowledge_components=None, mastery_prior=0.5):
         self.engine = EngineKnowledgeComponent(client, self)
