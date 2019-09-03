@@ -4,7 +4,7 @@ import shutil
 from types import FunctionType
 import tempfile
 from lxml import etree
-from alosi.data.google_drive import export_sheet_to_dataframe
+from .google_drive import export_sheet_to_dataframe
 from pandas import Categorical
 import pandas as pd
 
