@@ -527,7 +527,6 @@ class Activity:
         if self.bridge:
             self.bridge.update()
 
-
 class Collection:
     def __init__(self, client, *, slug, name):
         """
@@ -563,6 +562,7 @@ class KnowledgeComponent:
         slug
         prerequisite_knowledge_components
         mastery_prior
+
     """
     def __init__(self, client, *, name, slug, prerequisite_knowledge_components=None, mastery_prior=0.5):
         self.engine = EngineKnowledgeComponent(client, self)
