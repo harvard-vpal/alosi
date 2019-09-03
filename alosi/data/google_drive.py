@@ -2,7 +2,7 @@ from google.oauth2 import service_account
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import AuthorizedSession
 from pandas import read_csv
-from pandas.compat import StringIO
+from io import StringIO
 import gspread
 import os
 
