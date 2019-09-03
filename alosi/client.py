@@ -4,9 +4,28 @@ from .models import Activity, Collection, KnowledgeComponent
 
 
 class AlosiClient:
-    def __init__(self, *, bridge_host, bridge_token, bridge_owner_pk, engine_host, engine_token, content_source_pk):
-        self.bridge_api = BridgeApi(bridge_host, token=bridge_token)
-        self.engine_api = EngineApi(engine_host, token=engine_token)
+    def __init__(self, *, bridge_host=None, bridge_token=None, bridge_owner_pk=None, engine_host=None, engine_token=None, content_source_pk=None, enabled=None):
+        """
+        Initialize client with configuration and credentials.
+        For some use cases involving subsets of systems, some groups of parameters may not be needed
+        
+        :param bridge_host: Base URL of bridge application
+        :param bridge_token: API token for bridge
+        :param bridge_owner_pk: Primary key of bridge user to use as owner for created collections
+        :type bridge_owner_pk: int
+        :param content_source_pk: Primary key of content source associated with created activities
+        :param engine_host: Base URL of engine application
+        :param engine_token: API token for engine
+        """
+        # enabled clients tracks which API interfaces are enabled based on
+        # presence of required input parameters. Could be passed in explicitly
+        self.enabled = set(enabled) if enabled is not None else set(['engine','bridge'])
+        if bridge_host:
+            self.bridge_api = BridgeApi(bridge_host, token=bridge_token)
+            self.enabled.add('bridge')
+        if engine_host:
+            self.engine_api = EngineApi(engine_host, token=engine_token)
+            self.enabled.add('engine')
         self.bridge_owner_pk = bridge_owner_pk
         self.content_source_pk = 1
 
